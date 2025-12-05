@@ -82,6 +82,11 @@ Copy the output and paste it into the .env file.
 🚀 Usage & Access Control
 Start the containers:
 
+**Note:** Make sure to make the script executable before running the Docker container:
+
+```bash
+chmod +x setup-openvpn-docker.sh
+
 ```bash
 docker compose up -d
 ```
