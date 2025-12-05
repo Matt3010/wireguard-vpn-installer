@@ -1,53 +1,25 @@
-# Smart WireGuard VPN with Role-Based Access Control
+# WireGuard VPN Installer with Role-Based Access Control
 
-This project sets up a **WireGuard VPN server** (using [wg-easy](https://github.com/WeeJeWel/wg-easy)) running in **Docker**, paired with a **Dynamic Firewall script**. It allows managing VPN client permissions (Internet access, LAN access, or specific ports) using **tags in the Web UI**. The system also integrates **Cloudflare DDNS** to maintain accessibility even if your home IP changes.
-
----
-
-## 📋 Features
-
-- **Web UI:** Easy management of VPN clients via wg-easy dashboard.
-- **Dynamic DNS:** Automatically updates Cloudflare DNS records.
-- **Role-Based Firewall:** Permissions applied automatically based on client name:
-  - **Admin:** Full Internet + LAN access.
-  - **Only Internet:** Internet access only.
-  - **Lan:** LAN access only.
+This project provides a **WireGuard VPN server** (using [wg-easy](https://github.com/WeeJeWel/wg-easy)) running in **Docker**, combined with a **dynamic firewall script**. It enables easy management of VPN client permissions (Internet, LAN, or specific ports) via tags in the Web UI. The system also integrates **Cloudflare DDNS** to keep your VPN accessible even if your public IP changes.
 
 ---
 
-## 🛠 Prerequisites
+## Prerequisites
 
 - **Hardware:** Linux server (e.g., Raspberry Pi) capable of running Docker
 - **Domain:** Managed by Cloudflare
 
-## ⚙ WireGuard Port Forwarding Configuration
-
-- **Protocol:** `UDP`
-- **Remote Host IP Address:** `0.0.0.0 ~ 0.0.0.0`
-- **LAN Host:** `YOUR LOCAL IP ADDRESS`
-- **WAN Port:** `51820 ~ 51820`
-- **LAN Host Port:** `51820`
-
 ---
 
-## 🔐 Step 1: Cloudflare API Token Setup
+## Installation
 
-1. Log in to your **Cloudflare Dashboard**.
-2. Go to **My Profile → API Tokens → Create Token**.
-3. Use the **"Edit Zone DNS"** template or create a **Custom Token**.
-4. Configure **Permissions**:
-   * `Zone Resources → Include → Specific zone → Your Domain`
-5. Copy the generated **API Token**; it will be used in the `.env` file.
-
----
-
-## 📂 Installation
+Clone the repository:
 
 ```bash
 git clone https://github.com/Matt3010/wireguard-vpn-installer.git
 ```
 
-Go where **docker-compose.yml** is placed and create .env. Here an example:
+Navigate to the folder containing `docker-compose.yml` and create a `.env` file. Example:
 
 ```env
 # --- WG-EASY CONFIGURATION ---
@@ -70,51 +42,124 @@ CF_SUBDOMAIN=vpn
 CF_PROXIED=false
 ```
 
-🔐 Generating the Password Hash
+### Generating the Password Hash
 Generate a bcrypt hash for the Web UI password:
 
-[How to generate a bcrypt hash - wg-easy](https://github.com/wg-easy/wg-easy/blob/v14/How_to_generate_an_bcrypt_hash.md)
+See: [How to generate a bcrypt hash - wg-easy](https://github.com/wg-easy/wg-easy/blob/v14/How_to_generate_an_bcrypt_hash.md)
 
-Copy the output and paste it into the .env file.
+Copy the output and paste it into the `.env` file.
+
 ---
 
-🚀 Usage & Access Control
-Start the containers:
+## Step 1: Cloudflare API Token Setup
 
-**Note:** Make sure to make the script executable before running the Docker container:
+1. Log in to your Cloudflare Dashboard.
+2. Go to **My Profile → API Tokens → Create Token**.
+3. Use the **Edit Zone DNS** template or create a custom token.
+4. Set permissions:
+   - Zone Resources → Include → Specific zone → Your Domain
+5. Copy the generated API Token for use in the `.env` file.
+
+---
+
+## Cloudflare DNS Setup
+
+Before starting, ensure your domain is added to Cloudflare and you have access to its dashboard.
+
+1. **DNS Record:**
+   - Create an `A` record for your VPN subdomain (e.g., `vpn.yourdomain.com`) pointing to your server's public IP.
+   - If you use IPv6, create an `AAAA` record as well.
+   - The system can update this record automatically via DDNS.
+2. **Subdomain:**
+   - The subdomain specified in `CF_SUBDOMAIN` should exist in your Cloudflare DNS settings. If not, create it manually or let the DDNS script create/update it.
+3. **CF_PROXIED Flag:**
+   - Set to `false` to expose the real IP (required for VPN traffic).
+   - Set to `true` only if you want Cloudflare proxy (not recommended for VPN UDP traffic).
+
+---
+
+## WireGuard Port Forwarding
+
+- **Protocol:** UDP
+- **Remote Host IP:** 0.0.0.0
+- **LAN Host:** Your local IP address
+- **WAN Port:** 51820
+- **LAN Host Port:** 51820
+
+---
+
+## Docker & Network Configuration
+
+- The WireGuard container should have access to the host network for proper VPN operation. Use `network_mode: host` in `docker-compose.yml` if required.
+- Ensure Docker has permissions to run scripts and access network interfaces.
+
+---
+
+## Usage & Access Control
+
+**Note:** Make the firewall script executable before starting Docker:
 
 ```bash
 chmod +x wg-dynamic-firewall.sh
 docker compose up -d
 ```
 
-Access the dashboard at: http://YOUR_SERVER_IP:51821.
+Access the dashboard at: `http://YOUR_SERVER_IP:51821`
 
-The Tagging System
+### Tagging System
+
 Rename clients in the Web UI to apply firewall rules:
 
-| Tag in Name       | Role        | Internet | LAN Access | Description              |
-|------------------|------------|:--------:|:----------:|--------------------------|
-| _ADMIN           | Admin       | ✅       | ✅         | Full access              |
-| _ONLYINTERNET    | Web Only    | ✅       | ❌         | Guests, no LAN access    |
-| _LAN             | LAN Only    | ❌       | ✅         | Access local devices only|
-| _LAN_80 (or any other port)         | LAN Port 80 | ❌       | ✅         | Only port 80 access      |
-| _LAN_8000-9000   | LAN Port Range | ❌    | ✅         | Specific port range      |
-| (No Tag)         | Default     | ❌       | ❌         | Blocked by default       |
+| Tag in Name         | Role           | Internet | LAN Access | Description                   |
+|--------------------|----------------|:--------:|:----------:|-------------------------------|
+| _ADMIN             | Admin          | ✅       | ✅         | Full access                   |
+| _ONLYINTERNET      | Internet Only  | ✅       | ❌         | Guests, no LAN access         |
+| _LAN               | LAN Only       | ❌       | ✅         | Access local devices only     |
+| _LAN_80            | LAN Port 80    | ❌       | ✅         | Access to port 80 (or any specified port) |
+| _LAN_8000-9000     | LAN Port Range | ❌       | ✅         | Access to specific port range |
+| (No Tag)           | Default        | ❌       | ❌         | Blocked by default            |
 
-Examples:
+**Examples:**
+- `user_ADMIN` → Full access
+- `Guest_ONLYINTERNET` → Internet only
+- `Printer_LAN` → LAN only
+- `Camera_LAN_8123` → LAN access to port 8123 only
 
-user_ADMIN → Full access.
+---
 
-Guest_ONLYINTERNET → Internet only.
+## Firewall Script Notes
 
-Printer_LAN → LAN only.
+- The script `wg-dynamic-firewall.sh` must be executable (`chmod +x`).
+- It may require root privileges to manage firewall rules.
+- Log files are stored in `/var/log/wg-firewall.log` inside the container.
 
-Camera_LAN_8123 → LAN access to port 8123 only.
+---
 
-🔍 Monitoring & Logs
+## Features
+
+- **Web UI:** Manage VPN clients easily with wg-easy dashboard.
+- **Dynamic DNS:** Automatically updates Cloudflare DNS records.
+- **Role-Based Firewall:** Client permissions are set by tags in their names.
+
+---
+
+## Monitoring & Logs
+
 Check firewall logs:
 
 ```bash
 docker exec -it wireguard cat /var/log/wg-firewall.log
 ```
+
+---
+
+## Troubleshooting
+
+- **Cloudflare API Errors:** Check token permissions and zone settings.
+- **DNS Record Not Updating:** Verify subdomain exists and API token is correct.
+- **VPN Connection Issues:** Ensure port 51820 UDP is open and forwarded correctly.
+- **Firewall Script Errors:** Check script permissions and logs for details.
+- **Docker Network Issues:** Use `network_mode: host` if clients cannot connect.
+- **SSL/TLS:** Not required for VPN, but recommended for dashboard if exposed to the Internet.
+
+---
