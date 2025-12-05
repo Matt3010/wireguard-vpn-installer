@@ -49,11 +49,10 @@ git clone https://github.com/Matt3010/wireguard-vpn-installer.git
 
 Go where **docker-compose.yml** is placed and create .env. Here an example:
 
-
 ```env
 # --- WG-EASY CONFIGURATION ---
 WG_HOST=vpn.yourdomain.com
-WG_PASSWORD_HASH='$2a$10$...'  # Replace with generated bcrypt hash
+WG_PASSWORD_HASH=''  # Replace with generated bcrypt hash
 WG_PORT=51820
 WG_WEB_UI_PORT=51821
 WG_DEFAULT_ADDRESS=10.8.0.x
@@ -85,9 +84,7 @@ Start the containers:
 **Note:** Make sure to make the script executable before running the Docker container:
 
 ```bash
-chmod +x setup-openvpn-docker.sh
-
-```bash
+chmod +x wg-dynamic-firewall.sh
 docker compose up -d
 ```
 
@@ -101,7 +98,7 @@ Rename clients in the Web UI to apply firewall rules:
 | _ADMIN           | Admin       | ✅       | ✅         | Full access              |
 | _ONLYINTERNET    | Web Only    | ✅       | ❌         | Guests, no LAN access    |
 | _LAN             | LAN Only    | ❌       | ✅         | Access local devices only|
-| _LAN_80          | LAN Port 80 | ❌       | ✅         | Only port 80 access      |
+| _LAN_80 (or any other port)         | LAN Port 80 | ❌       | ✅         | Only port 80 access      |
 | _LAN_8000-9000   | LAN Port Range | ❌    | ✅         | Specific port range      |
 | (No Tag)         | Default     | ❌       | ❌         | Blocked by default       |
 
@@ -119,5 +116,5 @@ Camera_LAN_8123 → LAN access to port 8123 only.
 Check firewall logs:
 
 ```bash
-docker exec -it CONTAINER_NAME cat /var/log/wg-firewall.log
+docker exec -it wireguard cat /var/log/wg-firewall.log
 ```
