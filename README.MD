@@ -69,9 +69,7 @@ Before starting, ensure your domain is added to Cloudflare and you have access t
 1. **DNS Record:**
    - Create an `A` record for your VPN subdomain (e.g., `vpn.yourdomain.com`) pointing to your ISP public IP (static or dynamic).
    - The system can update this record automatically via DDNS.
-2. **Subdomain:**
-   - The subdomain specified in `CF_SUBDOMAIN` should exist in your Cloudflare DNS settings. If not, create it manually or let the DDNS script create/update it.
-3. **CF_PROXIED Flag:**
+2. **CF_PROXIED Flag:**
    - Set to `false` to expose the real IP (required for VPN traffic).
    - Set to `true` only if you want Cloudflare proxy (not recommended for VPN UDP traffic).
 
