@@ -67,8 +67,7 @@ Copy the output and paste it into the `.env` file.
 Before starting, ensure your domain is added to Cloudflare and you have access to its dashboard.
 
 1. **DNS Record:**
-   - Create an `A` record for your VPN subdomain (e.g., `vpn.yourdomain.com`) pointing to your server's public IP.
-   - If you use IPv6, create an `AAAA` record as well.
+   - Create an `A` record for your VPN subdomain (e.g., `vpn.yourdomain.com`) pointing to your ISP public IP (static or dynamic).
    - The system can update this record automatically via DDNS.
 2. **Subdomain:**
    - The subdomain specified in `CF_SUBDOMAIN` should exist in your Cloudflare DNS settings. If not, create it manually or let the DDNS script create/update it.
