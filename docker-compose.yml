@@ -1,0 +1,37 @@
+services:
+  wg-easy:
+    image: ghcr.io/wg-easy/wg-easy
+    container_name: wireguard
+    environment:
+      - WG_HOST=${WG_HOST}
+      - PASSWORD_HASH=${WG_PASSWORD_HASH}
+      - WG_PORT=${WG_PORT}
+      - WG_DEFAULT_ADDRESS=${WG_DEFAULT_ADDRESS}
+      - WG_DEFAULT_DNS=${WG_DEFAULT_DNS}
+      - WG_ALLOWED_IPS=${WG_ALLOWED_IPS}
+      - WG_MTU=${WG_MTU}
+      # Comandi Post Up/Down
+      - WG_POST_UP=${WG_POST_UP_SCRIPT}
+      - WG_POST_DOWN=iptables -F; iptables -t nat -F; iptables -X
+    volumes:
+      - ./config:/etc/wireguard
+    ports:
+      - "${WG_PORT}:${WG_PORT}/udp"
+      - "${WG_WEB_UI_PORT}:51821/tcp"
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    sysctls:
+      - net.ipv4.ip_forward=1
+      - net.ipv4.conf.all.src_valid_mark=1
+
+  cloudflare-ddns:
+    image: oznu/cloudflare-ddns:latest
+    container_name: cf-ddns-updater
+    restart: always
+    environment:
+      - API_KEY=${CF_API_KEY}
+      - ZONE=${CF_ZONE}
+      - SUBDOMAIN=${CF_SUBDOMAIN}
+      - PROXIED=${CF_PROXIED}
