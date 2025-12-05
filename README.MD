@@ -78,12 +78,7 @@ Generate a bcrypt hash for the Web UI password:
 
 [How to generate a bcrypt hash - wg-easy](https://github.com/wg-easy/wg-easy/blob/v14/How_to_generate_an_bcrypt_hash.md)
 
-```bash
-docker run --rm -it ghcr.io/wg-easy/wg-easy wgpw YOUR_PASSWORD
-```
-
 Copy the output and paste it into the .env file.
-
 ---
 
 🚀 Usage & Access Control
