@@ -82,8 +82,10 @@ Copy the output and paste it into the .env file.
 🚀 Usage & Access Control
 Start the containers:
 
-bash
+```bash
 docker compose up -d
+```
+
 Access the dashboard at: http://YOUR_SERVER_IP:51821.
 
 The Tagging System
