@@ -19,8 +19,6 @@ This project sets up a **WireGuard VPN server** (using [wg-easy](https://github.
 
 - **Hardware:** Linux server (e.g., Raspberry Pi) capable of running Docker
 - **Domain:** Managed by Cloudflare
-- **Network:** Port forwarding must be enabled on your router:
-  - UDP port `51820` → VPN traffic
 
 ## ⚙ WireGuard Port Forwarding Configuration
 
