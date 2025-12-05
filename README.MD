@@ -24,7 +24,7 @@ This project sets up a **WireGuard VPN server** (using [wg-easy](https://github.
 
 - **Protocol:** `UDP`
 - **Remote Host IP Address:** `0.0.0.0 ~ 0.0.0.0`
-- **LAN Host:** `192.168.1.99`
+- **LAN Host:** `YOUR LOCAL IP ADDRESS`
 - **WAN Port:** `51820 ~ 51820`
 - **LAN Host Port:** `51820`
 
