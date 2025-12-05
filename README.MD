@@ -94,13 +94,14 @@ Access the dashboard at: http://YOUR_SERVER_IP:51821.
 The Tagging System
 Rename clients in the Web UI to apply firewall rules:
 
-Tag in Name	Role	Internet	LAN Access	Description
-_ADMIN	Admin	✅	✅	Full access
-_ONLYINTERNET	Web Only	✅	❌	Guests, no LAN access
-_LAN	LAN Only	❌	✅	Access local devices only
-_LAN_80	LAN Port 80	❌	✅	Only port 80 access
-_LAN_8000-9000	LAN Port Range	❌	✅	Specific port range
-(No Tag)	Default	❌	❌	Blocked by default
+| Tag in Name       | Role        | Internet | LAN Access | Description              |
+|------------------|------------|:--------:|:----------:|--------------------------|
+| _ADMIN           | Admin       | ✅       | ✅         | Full access              |
+| _ONLYINTERNET    | Web Only    | ✅       | ❌         | Guests, no LAN access    |
+| _LAN             | LAN Only    | ❌       | ✅         | Access local devices only|
+| _LAN_80          | LAN Port 80 | ❌       | ✅         | Only port 80 access      |
+| _LAN_8000-9000   | LAN Port Range | ❌    | ✅         | Specific port range      |
+| (No Tag)         | Default     | ❌       | ❌         | Blocked by default       |
 
 Examples:
 
