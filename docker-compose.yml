@@ -10,8 +10,13 @@ services:
       - WG_DEFAULT_DNS=${WG_DEFAULT_DNS}
       - WG_ALLOWED_IPS=${WG_ALLOWED_IPS}
       - WG_MTU=${WG_MTU}
-      - WG_POST_UP=${WG_POST_UP_SCRIPT}
-      - WG_POST_DOWN=iptables -F; iptables -t nat -F; iptables -X
+      # -----------------------------------------------------------------------
+      # FIREWALL HOOKS
+      # 1. Install Python (since Alpine doesn't have it)
+      # 2. Run the Python firewall script in the background
+      # -----------------------------------------------------------------------
+      - WG_POST_UP=apk add --no-cache python3 && python3 /etc/wireguard/wg-dynamic-firewall.py &
+      - WG_POST_DOWN=iptables -F; iptables -t nat -F; iptables -X; pkill -f wg-dynamic-firewall.py
     volumes:
       - ./config:/etc/wireguard
     ports:

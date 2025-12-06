@@ -32,9 +32,6 @@ WG_DEFAULT_DNS=1.1.1.1
 WG_ALLOWED_IPS=0.0.0.0/0
 WG_MTU=1420
 
-# --- CUSTOM FIREWALL SCRIPT ---
-WG_POST_UP_SCRIPT=/etc/wireguard/wg-dynamic-firewall.sh
-
 # --- CLOUDFLARE DDNS ---
 CF_API_KEY=your_cloudflare_api_token
 CF_ZONE=yourdomain.com
@@ -92,17 +89,6 @@ Before starting, ensure your domain is added to Cloudflare and you have access t
 
 ---
 
-## Usage & Access Control
-
-**Note:** Make the firewall script executable before starting Docker:
-
-```bash
-chmod +x wg-dynamic-firewall.sh
-docker compose up -d
-```
-
-Access the dashboard at: `http://YOUR_SERVER_IP:51821`
-
 ### Tagging System
 
 Rename clients in the Web UI to apply firewall rules:
@@ -126,10 +112,9 @@ Rename clients in the Web UI to apply firewall rules:
 
 ## Firewall Script Notes
 
-- The script `wg-dynamic-firewall.sh` must be executable (`chmod +x`).
 - It may require root privileges to manage firewall rules.
 - Log files are stored in `/var/log/wg-firewall.log` inside the container.
-- **LAN_SUBNET:** The default is `192.168.1.0/24`, but you should change this value in `wg-dynamic-firewall.sh` to match your actual LAN subnet (e.g., `10.0.0.0/24`, `192.168.10.0/24`, etc.).
+- **LAN_SUBNET:** The default is `192.168.1.0/24`, but you should change this value in `wg-dynamic-firewall.py` to match your actual LAN subnet (e.g., `10.0.0.0/24`, `192.168.10.0/24`, etc.).
 
 ---
 
@@ -150,6 +135,7 @@ docker exec -it wireguard cat /var/log/wg-firewall.log
 ```
 
 To access wireguard configuration page you should jump host.
+
 ```ssh
 ssh -L 51821:127.0.0.1:51821 user@your-server-ip
 ```
