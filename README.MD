@@ -149,6 +149,11 @@ Check firewall logs:
 docker exec -it wireguard cat /var/log/wg-firewall.log
 ```
 
+To access wireguard configuration page you should jump host.
+```ssh
+ssh -L 51821:127.0.0.1:51821 user@your-server-ip
+```
+
 ---
 
 ## Troubleshooting
