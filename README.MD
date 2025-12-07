@@ -119,7 +119,7 @@ Rename clients in the Web UI to apply firewall rules. The system uses tags enclo
 ## Firewall Script Notes
 
 - It may require root privileges to manage firewall rules.
-- Log files are stored in `config/logs/wg-firewall.log` inside the container.
+- Log files are stored in `/var/log/wg-firewall.log` inside the container.
 - **LAN_SUBNET:** The default is `192.168.1.0/24`, but you should change this value in `wg-dynamic-firewall.py` to match your actual LAN subnet (e.g., `10.0.0.0/24`, `192.168.10.0/24`, etc.).
 
 ---
@@ -137,7 +137,7 @@ Rename clients in the Web UI to apply firewall rules. The system uses tags enclo
 Check firewall logs:
 
 ```bash
-cat config/logs/wg-firewall.log
+docker exec -it wireguard cat /var/log/wg-firewall.log
 ```
 
 To access wireguard configuration page you should jump host.
