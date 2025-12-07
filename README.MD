@@ -91,29 +91,35 @@ Before starting, ensure your domain is added to Cloudflare and you have access t
 
 ### Tagging System
 
-Rename clients in the Web UI to apply firewall rules:
+Rename clients in the Web UI to apply firewall rules. The system uses tags enclosed in **square brackets**.
 
-| Tag in Name         | Role           | Internet | LAN Access | Description                   |
-|--------------------|----------------|:--------:|:----------:|-------------------------------|
-| _ADMIN             | Admin          | ✅       | ✅         | Full access                   |
-| _ONLYINTERNET      | Internet Only  | ✅       | ❌         | Guests, no LAN access         |
-| _LAN               | LAN Only       | ❌       | ✅         | Access local devices only     |
-| _LAN_80            | LAN Port 80    | ❌       | ✅         | Access to port 80 (or any specified port) |
-| _LAN_8000-9000     | LAN Port Range | ❌       | ✅         | Access to specific port range |
-| (No Tag)           | Default        | ❌       | ❌         | Blocked by default            |
+> **Important:** For port ranges, you MUST use a colon (`:`) instead of a hyphen (`-`), as this is strictly passed to `iptables`.
+
+| Tag Format           | Role           | Internet | LAN Access | Description |
+|----------------------|----------------|:--------:|:----------:|-------------|
+| `[ADMIN]`            | Admin          | ✅       | ✅         | Full access to Internet and all LAN devices. |
+| `[ONLYINTERNET]`     | Internet Only  | ✅       | ❌         | Guests. VPN Internet access, but blocked from local LAN. |
+| `[LAN]`              | LAN Full       | ❌       | ✅         | Access to ALL local devices. No Internet. |
+| `[LAN:80]`           | LAN Port       | ❌       | ✅         | Access only to port 80 (TCP/UDP). |
+| `[LAN:80:90]`        | LAN Range      | ❌       | ✅         | Access to ports 80 through 90 (**Use colon `:`**). |
+| `[LAN:80,443]`       | LAN Multi      | ❌       | ✅         | Access to ports 80 AND 443 (Comma separated). |
+| `[LAN:80:90,8080]`   | LAN Mixed      | ❌       | ✅         | Range 80-90 AND single port 8080. |
+| (No Tag)             | Default        | ❌       | ❌         | **Blocked by default** (No access). |
 
 **Examples:**
-- `user_ADMIN` → Full access
-- `Guest_ONLYINTERNET` → Internet only
-- `Printer_LAN` → LAN only
-- `Camera_LAN_8123` → LAN access to port 8123 only
+- `iPhone_Mario [ADMIN]` → Full access
+- `GuestUser [ONLYINTERNET]` → Internet only, safe for public WiFi
+- `Printer [LAN]` → Access to all internal devices, no internet
+- `WebDev [LAN:80,443]` → Access only to web ports
+- `TestServer [LAN:8000:9000]` → **Correct** (Uses colon)
+- `WrongServer [LAN:8000-9000]` → ❌ **Wrong** (Do not use hyphens for ranges)
 
 ---
 
 ## Firewall Script Notes
 
 - It may require root privileges to manage firewall rules.
-- Log files are stored in `/var/log/wg-firewall.log` inside the container.
+- Log files are stored in `config/logs/wg-firewall.log` inside the container.
 - **LAN_SUBNET:** The default is `192.168.1.0/24`, but you should change this value in `wg-dynamic-firewall.py` to match your actual LAN subnet (e.g., `10.0.0.0/24`, `192.168.10.0/24`, etc.).
 
 ---
@@ -131,7 +137,7 @@ Rename clients in the Web UI to apply firewall rules:
 Check firewall logs:
 
 ```bash
-docker exec -it wireguard cat /var/log/wg-firewall.log
+cat config/logs/wg-firewall.log
 ```
 
 To access wireguard configuration page you should jump host.

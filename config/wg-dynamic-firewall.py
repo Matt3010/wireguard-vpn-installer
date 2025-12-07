@@ -11,14 +11,38 @@ import time
 # ==============================================================================
 # CONFIGURATION
 # ==============================================================================
-LOGFILE = "/var/log/wg-firewall.log"
+LOGFILE = "/etc/wireguard/logs/wg-firewall.log"
 JSON_PATH = "/etc/wireguard/wg0.json"
 WAN_IF = "eth0"
 WG_IF = "wg0"
 LAN_SUBNET = "192.168.1.0/24"
 RULES_V4_PATH = "/etc/wireguard/iptables.rules.v4"
 
-# Configure Logging
+# ------------------------------------------------------------------------------
+# ROLE DEFINITIONS
+# ------------------------------------------------------------------------------
+ROLES_CONFIG = {
+    "ADMIN": {
+        "internet": True,
+        "lan": True,
+        "ports": "ALL",
+        "icon": "🛡️ ADMIN"
+    },
+    "ONLYINTERNET": {
+        "internet": True,
+        "lan": False,
+        "ports": None,
+        "icon": "🌍 WEB ONLY"
+    },
+    "LAN": {
+        "internet": False,
+        "lan": True,
+        "ports": "ALL",
+        "icon": "🏠 LAN FULL"
+    }
+}
+
+# Logging Setup
 logging.basicConfig(
     filename=LOGFILE,
     level=logging.INFO,
@@ -27,7 +51,7 @@ logging.basicConfig(
 )
 
 def log_msg(message):
-    """Logs to file and prints to stdout (for Docker logs)."""
+    """Logs to file and prints to stdout."""
     print(message)
     logging.info(message)
 
@@ -45,13 +69,62 @@ def get_file_hash(filepath):
 def save_iptables_rules():
     """Saves current rules for persistence."""
     try:
-        # Create directory if it doesn't exist
         os.makedirs(os.path.dirname(RULES_V4_PATH), exist_ok=True)
         with open(RULES_V4_PATH, "w") as f:
             subprocess.run(["iptables-save"], stdout=f, check=True)
         log_msg(f"[INFO] IPTables rules saved to {RULES_V4_PATH}")
     except Exception as e:
         log_msg(f"[ERROR] Could not save rules: {e}")
+
+def parse_roles_from_name(client_name):
+    """
+    Parses tags like [ADMIN] or [LAN:80:90,8080] from the client name.
+    """
+    # Default Policy (No Access)
+    policy = {
+        "internet": False,
+        "lan": False,
+        "ports": None,
+        "icon": "⛔ DEFAULT (No Tag)"
+    }
+
+    # Regex to capture content inside square brackets
+    # Matches: [ADMIN], [LAN], [LAN:80], [LAN:80:90,443]
+    # Note: Allowed chars include ':' for ranges and ',' for lists.
+    matches = re.findall(r"\[([a-zA-Z0-9,:.-]+)]", client_name)
+
+    for tag in matches:
+        # Split Tag into ROLE and ARGS (e.g. "LAN:80" -> "LAN", "80")
+        # split(":", 1) ensures we only split on the FIRST colon (Role separator)
+        # Subsequent colons (e.g., in 80:90) remain part of args.
+        if ":" in tag:
+            role_key, args = tag.split(":", 1)
+        else:
+            role_key, args = tag, None
+
+        role_key = role_key.upper()
+
+        # Check if this Key exists in our Config
+        if role_key in ROLES_CONFIG:
+            policy = ROLES_CONFIG[role_key].copy()
+
+            # Handle specific port overrides for LAN role
+            if role_key == "LAN":
+                if args:
+                    # Case: [LAN:80,443] or [LAN:80:90,8080]
+                    # We pass 'args' directly to iptables.
+                    # User must strictly use iptables syntax (colons for ranges).
+                    policy["ports"] = args
+                    policy["icon"] = f"🎯 LAN PORTS [{args}]"
+                else:
+                    # Case: [LAN] (No args) -> Defaults to ALL ports
+                    policy["ports"] = "ALL"
+                    policy["icon"] = "🏠 LAN FULL"
+
+            # Stop after finding the first valid tag
+            break
+
+    return policy
 
 # ==============================================================================
 # FIREWALL LOGIC (RULE GENERATION)
@@ -83,58 +156,38 @@ def generate_iptables_content(clients_data):
         client_ip = client.get('address', '').strip()
         raw_name = client.get('name', '')
 
-        # Sanitize Name (Only alphanumeric, hyphens, underscores)
-        client_name_safe = re.sub(r'[^a-zA-Z0-9_-]', '', raw_name)
+        # Sanitize name for comments
+        safe_name_comment = re.sub(r'[^a-zA-Z0-9 \[\]:.,_-]', '', raw_name)
 
-        # Reset Variables
-        allow_internet = False
-        allow_lan = False
-        lan_ports = "ALL"
-        role = "⛔ DEFAULT (No Tag)"
+        # --- PARSE POLICY ---
+        current_policy = parse_roles_from_name(raw_name)
 
-        # Tag Detection (Case Insensitive)
-        name_upper = client_name_safe.upper()
-
-        if "_ADMIN" in name_upper:
-            allow_internet = True
-            allow_lan = True
-            role = "🛡️ ADMIN"
-        elif "_ONLYINTERNET" in name_upper:
-            allow_internet = True
-            allow_lan = False
-            role = "🌍 WEB ONLY"
-        elif "_LAN" in name_upper:
-            allow_internet = False
-            allow_lan = True
-            role = "🏠 LAN FULL"
-
-            # Look for specific port patterns like _LAN_8080 or _LAN_80-90
-            port_match = re.search(r"_LAN_(\d+(?:-\d+)?)", name_upper)
-            if port_match:
-                lan_ports = port_match.group(1)
-                role = f"🎯 LAN PORT {lan_ports}"
-
-        # Generate Log String
-        log_str = f"User: {client_name_safe} | Role: {role}"
+        # --- APPLY RULES ---
+        log_str = f"User: {safe_name_comment:<25} | Role: {current_policy['icon']}"
 
         # INTERNET Rule
-        if allow_internet:
+        if current_policy['internet']:
             lines.append(f"-A FORWARD -i {WG_IF} -o {WAN_IF} -s {client_ip} ! -d {LAN_SUBNET} -j ACCEPT")
             log_str += " | NET: ✅"
         else:
             log_str += " | NET: ❌"
 
         # LAN Rule
-        if allow_lan:
-            if lan_ports == "ALL":
+        if current_policy['lan']:
+            ports = current_policy['ports']
+
+            if ports == "ALL":
+                # [LAN] -> Full Access
                 lines.append(f"-A FORWARD -i {WG_IF} -s {client_ip} -d {LAN_SUBNET} -j ACCEPT")
                 log_str += " | LAN: ✅ (ALL)"
+            elif ports:
+                # [LAN:...] -> Specific Ports
+                # Directly uses user input. Format MUST be valid for iptables multiport.
+                lines.append(f"-A FORWARD -i {WG_IF} -s {client_ip} -d {LAN_SUBNET} -p tcp -m multiport --dports {ports} -j ACCEPT")
+                lines.append(f"-A FORWARD -i {WG_IF} -s {client_ip} -d {LAN_SUBNET} -p udp -m multiport --dports {ports} -j ACCEPT")
+                log_str += f" | LAN: ✅ (Ports: {ports})"
             else:
-                # iptables uses ':' for ranges, while the tag uses '-'
-                ipt_port = lan_ports.replace("-", ":")
-                lines.append(f"-A FORWARD -i {WG_IF} -s {client_ip} -d {LAN_SUBNET} -p tcp --dport {ipt_port} -j ACCEPT")
-                lines.append(f"-A FORWARD -i {WG_IF} -s {client_ip} -d {LAN_SUBNET} -p udp --dport {ipt_port} -j ACCEPT")
-                log_str += f" | LAN: ✅ (Port {ipt_port})"
+                log_str += " | LAN: ❌ (Error)"
         else:
             log_str += " | LAN: ❌"
 
@@ -172,7 +225,6 @@ def apply_firewall_rules():
 
     rules_content = generate_iptables_content(clients)
 
-    # Atomic Application using iptables-restore
     try:
         process = subprocess.Popen(['iptables-restore'], stdin=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = process.communicate(input=rules_content.encode('utf-8'))
@@ -191,7 +243,6 @@ def apply_firewall_rules():
 # ==============================================================================
 
 def main():
-    # Initial Restore (if exists)
     if os.path.exists(RULES_V4_PATH):
         try:
             with open(RULES_V4_PATH, "r") as f:
@@ -200,16 +251,14 @@ def main():
         except Exception:
             log_msg("[WARN] Rule restoration failed.")
 
-    # Watcher Loop
     last_hash = ""
     log_msg("[WATCHER] Service started.")
 
     while True:
         current_hash = get_file_hash(JSON_PATH)
 
-        # Update if file changed
         if current_hash and current_hash != last_hash:
-            if last_hash != "": # Skip log on very first run to keep logs clean, or keep it if you prefer
+            if last_hash != "":
                 log_msg("[WATCHER] Change detected in wg0.json.")
             apply_firewall_rules()
             last_hash = current_hash
