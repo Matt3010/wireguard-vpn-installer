@@ -121,7 +121,7 @@ Rename clients in the Web UI to apply firewall rules. The system uses tags enclo
 - It may require root privileges to manage firewall rules.
 - Log files are stored in `/var/log/wg-firewall.log` inside the container.
 - **LAN_SUBNET:** The default is `192.168.1.0/24`, but you should change this value in `wg-dynamic-firewall.py` to match your actual LAN subnet (e.g., `10.0.0.0/24`, `192.168.10.0/24`, etc.).
-
+- docker compose up -d --build --force-recreate to start docker compose.
 ---
 
 ## Features

@@ -11,7 +11,7 @@ import time
 # ==============================================================================
 # CONFIGURATION
 # ==============================================================================
-LOGFILE = "var/log/wg-firewall.log"
+LOGFILE = "/var/log/wg-firewall.log"
 JSON_PATH = "/etc/wireguard/wg0.json"
 WAN_IF = "eth0"
 WG_IF = "wg0"
