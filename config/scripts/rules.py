@@ -82,7 +82,10 @@ def parse_roles_from_name(client_name):
             policy["lan"] = base_config.get("lan", False)
             policy["icon"] = base_config.get("icon", "❓")
 
-            # 2. Special Handling for LAN Ports
+            # This ensures roles like ADMIN get their "ALL" permission
+            policy["ports"] = base_config.get("ports", None)
+
+            # 2. Special Handling for LAN Ports (Overrides defaults if args exist)
             if role_key == "LAN":
                 if args:
                     if is_valid_port_string(args):
@@ -95,7 +98,8 @@ def parse_roles_from_name(client_name):
                         policy["icon"] = f"⚠️ INVALID PORT ({args})"
                         log_msg(f"[WARNING] Client '{client_name}' has invalid ports: '{args}'. LAN access blocked.")
                 else:
-                    # No ports specified -> Full Access as per config
+                    # No args provided for LAN tag -> Use config default (which is "ALL")
+                    # We strictly set it here just to be safe/explicit for the LAN tag
                     policy["ports"] = "ALL"
                     policy["icon"] = "🏠 LAN FULL"
 
