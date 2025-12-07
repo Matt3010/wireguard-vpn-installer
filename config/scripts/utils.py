@@ -1,4 +1,5 @@
 import os
+import time
 import hashlib
 import subprocess
 from config import RULES_V4_PATH
@@ -26,11 +27,37 @@ def save_iptables_rules():
         log_error("Saving iptables rules", e)
 
 def flush_conntrack():
-    """Executes 'conntrack -F' to force flush existing connections."""
+    """
+    NUCLEAR OPTION: Flushes connections using both conntrack tool
+    AND the kernel timeout trick to force-kill persistent sockets.
+    """
     try:
         subprocess.run(['conntrack', '-F'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        log_msg("[INFO] Conntrack table flushed (old connections dropped).")
-    except FileNotFoundError:
-        log_msg("[WARN] 'conntrack' command not found. Pre-existing connections might remain active.")
+    except:
+        pass
+
+    timeout_path = "/proc/sys/net/netfilter/nf_conntrack_tcp_timeout_established"
+    default_timeout = "432000"
+
+    try:
+        if os.path.exists(timeout_path):
+            with open(timeout_path, "r") as f:
+                content = f.read().strip()
+                if content.isdigit():
+                    default_timeout = content
+
+            log_msg("[INFO] Applying TCP Timeout Trick (Nuclear Flush)...")
+            with open(timeout_path, "w") as f:
+                f.write("1")
+
+            time.sleep(2)
+
+            with open(timeout_path, "w") as f:
+                f.write(default_timeout)
+
+            log_msg("[INFO] Connections killed and timeout restored.")
+        else:
+            log_msg("[WARN] Cannot find conntrack timeout file in /proc. Skipping trick.")
+
     except Exception as e:
-        log_error("Flushing conntrack", e)
+        log_error("Flushing conntrack (Timeout Method)", e)
