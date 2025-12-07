@@ -1,8 +1,7 @@
 import os
-import time
 import hashlib
 import subprocess
-from config import RULES_V4_PATH
+from config import RULES_V4_PATH, RULES_V6_PATH
 from logger import log_msg, log_error
 
 def get_file_hash(filepath):
@@ -17,47 +16,25 @@ def get_file_hash(filepath):
         return None
 
 def save_iptables_rules():
-    """Saves current rules to disk."""
+    """Saves current rules to disk (IPv4 and IPv6)."""
     try:
         os.makedirs(os.path.dirname(RULES_V4_PATH), exist_ok=True)
+
+        # Save IPv4
         with open(RULES_V4_PATH, "w") as f:
             subprocess.run(["iptables-save"], stdout=f, check=True)
-        log_msg(f"[INFO] IPTables rules saved to {RULES_V4_PATH}")
+
+        # Save IPv6 (Block rules)
+        with open(RULES_V6_PATH, "w") as f:
+            subprocess.run(["ip6tables-save"], stdout=f, check=True)
+
+        log_msg(f"[INFO] IPTables rules saved (v4 to {RULES_V4_PATH}, v6 to {RULES_V6_PATH})")
     except Exception as e:
         log_error("Saving iptables rules", e)
 
 def flush_conntrack():
-    """
-    NUCLEAR OPTION: Flushes connections using both conntrack tool
-    AND the kernel timeout trick to force-kill persistent sockets.
-    """
     try:
         subprocess.run(['conntrack', '-F'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    except:
-        pass
-
-    timeout_path = "/proc/sys/net/netfilter/nf_conntrack_tcp_timeout_established"
-    default_timeout = "432000"
-
-    try:
-        if os.path.exists(timeout_path):
-            with open(timeout_path, "r") as f:
-                content = f.read().strip()
-                if content.isdigit():
-                    default_timeout = content
-
-            log_msg("[INFO] Applying TCP Timeout Trick (Nuclear Flush)...")
-            with open(timeout_path, "w") as f:
-                f.write("1")
-
-            time.sleep(2)
-
-            with open(timeout_path, "w") as f:
-                f.write(default_timeout)
-
-            log_msg("[INFO] Connections killed and timeout restored.")
-        else:
-            log_msg("[WARN] Cannot find conntrack timeout file in /proc. Skipping trick.")
-
+        log_msg("[INFO] Conntrack table flushed.")
     except Exception as e:
-        log_error("Flushing conntrack (Timeout Method)", e)
+        log_error("Flushing conntrack", e)

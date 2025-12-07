@@ -1,7 +1,8 @@
 # Paths
-LOGFILE = "/var/log/wg-firewall.log"
+LOGFILE = "/etc/wireguard/wg-firewall.log"
 JSON_PATH = "/etc/wireguard/wg0.json"
 RULES_V4_PATH = "/etc/wireguard/iptables.rules.v4"
+RULES_V6_PATH = "/etc/wireguard/iptables.rules.v6"
 
 # Network Interfaces
 WAN_IF = "eth0"

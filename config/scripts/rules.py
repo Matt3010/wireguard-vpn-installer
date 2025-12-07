@@ -37,7 +37,7 @@ def parse_roles_from_name(client_name):
     return policy
 
 def generate_iptables_content(clients_data):
-    """Generates the text content for iptables-restore."""
+    """Generates the text content for iptables-restore (IPv4)."""
     lines = [
         "*filter",
         ":INPUT DROP [0:0]",
@@ -49,7 +49,11 @@ def generate_iptables_content(clients_data):
         "-A FORWARD -m state --state ESTABLISHED,RELATED -j ACCEPT",
         "# WireGuard Ports",
         "-A INPUT -p udp --dport 51820 -j ACCEPT",
-        "-A INPUT -p tcp --dport 51821 -j ACCEPT"
+        "-A INPUT -p tcp --dport 51821 -j ACCEPT",
+
+        # DNS Rules
+        f"-A FORWARD -i {WG_IF} -p udp --dport 53 -j ACCEPT",
+        f"-A FORWARD -i {WG_IF} -p tcp --dport 53 -j ACCEPT"
     ]
 
     for client_id, client in clients_data.items():
@@ -67,6 +71,7 @@ def generate_iptables_content(clients_data):
 
         # INTERNET Rule
         if current_policy['internet']:
+            # Blocks LAN, but DNS (port 53) was accepted above
             lines.append(f"-A FORWARD -i {WG_IF} -o {WAN_IF} -s {client_ip} ! -d {LAN_SUBNET} -j ACCEPT")
             log_str += " | NET: ✅"
         else:
@@ -102,4 +107,18 @@ def generate_iptables_content(clients_data):
         "COMMIT"
     ])
 
+    return "\n".join(lines) + "\n"
+
+def generate_ip6tables_block_content():
+    """Generates rules to BLOCK IPv6 traffic but allow system output."""
+    lines = [
+        "*filter",
+        ":INPUT DROP [0:0]",
+        ":FORWARD DROP [0:0]",
+        ":OUTPUT ACCEPT [0:0]",
+        "# Allow Loopback (Crucial for system stability)",
+        "-A INPUT -i lo -j ACCEPT",
+        "-A OUTPUT -o lo -j ACCEPT",
+        "COMMIT"
+    ]
     return "\n".join(lines) + "\n"
