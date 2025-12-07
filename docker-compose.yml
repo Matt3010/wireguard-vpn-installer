@@ -10,8 +10,8 @@ services:
       - WG_DEFAULT_DNS=${WG_DEFAULT_DNS}
       - WG_ALLOWED_IPS=${WG_ALLOWED_IPS}
       - WG_MTU=${WG_MTU}
-      - WG_POST_UP=apk add --no-cache python3 && python3 /etc/wireguard/wg-dynamic-firewall.py &
-      - WG_POST_DOWN=iptables -F; iptables -t nat -F; iptables -X; pkill -f wg-dynamic-firewall.py
+      - WG_POST_UP=apk add --no-cache python3 conntrack-tools && python3 /etc/wireguard/scripts/main.py &
+      - WG_POST_DOWN=iptables -F; iptables -t nat -F; iptables -X; pkill -f main.py
     volumes:
       - ./config:/etc/wireguard
     ports:
