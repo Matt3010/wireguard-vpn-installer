@@ -32,9 +32,22 @@ def save_iptables_rules():
     except Exception as e:
         log_error("Saving iptables rules", e)
 
-def flush_conntrack():
+def flush_specific_ip(ip_address):
+    """
+    Removes conntrack entries ONLY for a specific IP.
+    Uses -D (delete) instead of -F (flush all).
+    """
+    if not ip_address:
+        return
+
+    log_msg(f"[CONNTRACK] Flushing connections for IP: {ip_address}")
+
+    # We suppress errors because if no connection exists for this IP, 
+    # conntrack returns an error code, which is fine.
     try:
-        subprocess.run(['conntrack', '-F'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        log_msg("[INFO] Conntrack table flushed.")
-    except Exception as e:
-        log_error("Flushing conntrack", e)
+        # Delete connections where IP is source
+        subprocess.run(['conntrack', '-D', '-s', ip_address], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # Delete connections where IP is destination
+        subprocess.run(['conntrack', '-D', '-d', ip_address], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
