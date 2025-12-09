@@ -51,4 +51,3 @@ def flush_specific_ip(ip_address):
         subprocess.run(['conntrack', '-D', '-d', ip_address], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except Exception:
         pass
-}
