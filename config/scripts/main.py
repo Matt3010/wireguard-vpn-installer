@@ -4,10 +4,10 @@ import os
 import time
 import signal
 import subprocess
-from config import WG_CONF_PATH, RULES_V4_PATH, HEARTBEAT_FILE, LAN_SUBNETS
+from config import WG_CONF_PATH, RULES_V4_PATH, RULES_V6_PATH, HEARTBEAT_FILE, LAN_SUBNETS
 from logger import log_msg, log_error, log_separator
 from utils import get_file_hash, save_iptables_rules, flush_specific_ip, parse_wg_conf
-from rules import generate_iptables_content, generate_ip6tables_block_content
+from rules import generate_iptables_content, generate_ip6tables_content
 
 # Global variable to handle clean shutdown
 RUNNING = True
@@ -28,7 +28,7 @@ def update_heartbeat():
 
 def apply_firewall_rules(old_clients_data, new_clients_data):
     """
-    Applies the firewall rules.
+    Applies the firewall rules (IPv4 and IPv6).
     Returns a tuple: (success: bool, resulting_data: dict)
     """
     log_separator()
@@ -48,10 +48,16 @@ def apply_firewall_rules(old_clients_data, new_clients_data):
         log_error("Applying IPv4 rules", e)
         return False, old_clients_data
 
-    # 2. Apply IPv6 Block (Best effort)
+    # 2. Apply IPv6 Rules (IP6Tables Restore)
     try:
-        v6_content = generate_ip6tables_block_content()
-        subprocess.run(['ip6tables-restore'], input=v6_content.encode('utf-8'), stderr=subprocess.DEVNULL)
+        v6_content = generate_ip6tables_content(new_clients_data)
+        process = subprocess.Popen(['ip6tables-restore'], stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+        _, stderr = process.communicate(input=v6_content.encode('utf-8'))
+
+        if process.returncode != 0:
+            err_decoded = stderr.decode('utf-8')
+            log_msg(f"[ERROR] ip6tables-restore (v6) failed: {err_decoded}")
+            # Note: We continue even if v6 fails, but log it.
     except Exception as e:
         log_error("Applying IPv6 rules", e)
 
@@ -60,29 +66,33 @@ def apply_firewall_rules(old_clients_data, new_clients_data):
         ips_to_flush = set()
         all_ids = set(old_clients_data.keys()).union(set(new_clients_data.keys()))
 
+        def add_client_ips(c):
+            if not c: return
+            if c.get('address'): ips_to_flush.add(c['address'])
+            if c.get('address_v6'): ips_to_flush.add(c['address_v6'])
+
         for client_id in all_ids:
             old_c = old_clients_data.get(client_id)
             new_c = new_clients_data.get(client_id)
 
-            # Case 1: Client Removed (exists in old, not in new)
-            # In wg0.conf, disabled clients are removed from the file, so this catches them.
+            # Case 1: Client Removed
             if (old_c and not new_c):
-                if old_c.get('address'): ips_to_flush.add(old_c['address'])
+                add_client_ips(old_c)
 
-            # Case 2: Client Added
+            # Case 2: Client Added (No flush needed usually)
             elif (new_c and not old_c):
-                # New client, usually no connections to flush, but safe to check
                 pass
 
             # Case 3: Client Modified
             elif old_c and new_c:
-                # If IP changed
-                if old_c.get('address') != new_c.get('address'):
-                    ips_to_flush.add(old_c.get('address'))
-                    ips_to_flush.add(new_c.get('address'))
+                # If IPs changed
+                if (old_c.get('address') != new_c.get('address')) or \
+                   (old_c.get('address_v6') != new_c.get('address_v6')):
+                    add_client_ips(old_c)
+                    add_client_ips(new_c)
                 # If Name/Tags changed (Rules changed, so flush to force re-eval)
                 elif old_c.get('name') != new_c.get('name'):
-                    if new_c.get('address'): ips_to_flush.add(new_c['address'])
+                    add_client_ips(new_c)
 
         if ips_to_flush:
             log_msg(f"[INFO] Flushing connections for {len(ips_to_flush)} clients.")
@@ -117,12 +127,20 @@ def main():
     signal.signal(signal.SIGTERM, handle_signal)
     signal.signal(signal.SIGINT, handle_signal)
 
-    # Restore rules on startup (IPv4)
+    # Restore rules on startup
     if os.path.exists(RULES_V4_PATH):
         try:
             with open(RULES_V4_PATH, "r") as f:
                 subprocess.run(["iptables-restore"], stdin=f, stderr=subprocess.DEVNULL)
             log_msg("[INFO] IPv4 rules restored at startup")
+        except Exception:
+            pass
+
+    if os.path.exists(RULES_V6_PATH):
+        try:
+            with open(RULES_V6_PATH, "r") as f:
+                subprocess.run(["ip6tables-restore"], stdin=f, stderr=subprocess.DEVNULL)
+            log_msg("[INFO] IPv6 rules restored at startup")
         except Exception:
             pass
 
@@ -135,13 +153,13 @@ def main():
 
     last_hash = ""
     log_msg(f"[WATCHER] Service started. Monitoring {WG_CONF_PATH}...")
-    log_msg(f"[INFO] Protected LAN Subnets: {LAN_SUBNETS}")
+    log_msg(f"[INFO] Protected LAN Subnets (v4): {LAN_SUBNETS}")
 
     while RUNNING:
         update_heartbeat()
 
         try:
-            # Monitor wg0.conf instead of json
+            # Monitor wg0.conf
             current_hash = get_file_hash(WG_CONF_PATH)
 
             if current_hash and (current_hash != last_hash):
@@ -156,9 +174,7 @@ def main():
                     log_msg("[WATCHER] Change detected in wg0.conf.")
 
                 try:
-                    # Read from CONF using the new parser
                     new_clients_data = read_conf_safe()
-
                     success, resulting_state = apply_firewall_rules(last_clients_state, new_clients_data)
 
                     if success:
