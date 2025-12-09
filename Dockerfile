@@ -6,9 +6,6 @@ RUN apk add --no-cache python3 py3-pip iptables ip6tables conntrack-tools
 # 2. Imposta la cartella di lavoro (wg-easy lavora in /app)
 WORKDIR /app
 
-# 3. Copia i tuoi script Python nel container
-COPY main.py config.py logger.py rules.py utils.py /app/
-
 # 4. Copia lo script di avvio e rendilo eseguibile
 COPY start.sh /app/start.sh
 RUN chmod +x /app/start.sh
