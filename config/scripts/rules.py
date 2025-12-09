@@ -140,9 +140,9 @@ def generate_iptables_content(clients_data):
 
         # INTERNET Rule
         if current_policy['internet']:
-            # Explicitly DROP traffic to LAN Subnets for "Internet Only" users
-            for subnet in LAN_SUBNETS:
-                 lines.append(f"-A FORWARD -i {WG_IF} -o {WAN_IF} -s {client_ip} -d {subnet} -j DROP")
+            if not current_policy['lan']:
+                for subnet in LAN_SUBNETS:
+                     lines.append(f"-A FORWARD -i {WG_IF} -o {WAN_IF} -s {client_ip} -d {subnet} -j DROP")
 
             # Allow remaining traffic (Internet)
             lines.append(f"-A FORWARD -i {WG_IF} -o {WAN_IF} -s {client_ip} -j ACCEPT")
