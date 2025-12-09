@@ -19,9 +19,14 @@ def get_file_hash(filepath):
 def parse_wg_conf(filepath):
     """
     Parses wg0.conf to extract client details.
-    Returns a dict compatible with the previous JSON structure:
+    Returns a dict:
     {
-        'client_id': {'name': 'Name [TAG]', 'address': '10.8.0.x', 'enabled': True}
+        'client_id': {
+            'name': 'Name [TAG]',
+            'address': '10.8.0.x',      # IPv4
+            'address_v6': 'fd00::x',    # IPv6 (Optional)
+            'enabled': True
+        }
     }
     """
     clients = {}
@@ -51,18 +56,24 @@ def parse_wg_conf(filepath):
                     try:
                         # Split by '=' then by ',' to handle multiple IPs (IPv4/IPv6)
                         parts = line.split("=", 1)[1].strip().split(",")
-                        found_ipv4 = False
+                        found_ip = False
 
                         for part in parts:
                             ip_cidr = part.strip()
-                            # Simply check for dot (.) for IPv4
+
+                            # Detect IPv4
                             if "." in ip_cidr:
                                 ip = ip_cidr.split("/")[0] # Remove /32
                                 current_client['address'] = ip
-                                found_ipv4 = True
-                                break
+                                found_ip = True
 
-                        if found_ipv4:
+                            # Detect IPv6
+                            elif ":" in ip_cidr:
+                                ip = ip_cidr.split("/")[0] # Remove /128
+                                current_client['address_v6'] = ip
+                                found_ip = True
+
+                        if found_ip:
                             # Save the client using its ID as the key
                             c_id = current_client['id']
                             clients[c_id] = current_client.copy()
@@ -87,7 +98,7 @@ def save_iptables_rules():
         with open(RULES_V4_PATH, "w") as f:
             subprocess.run(["iptables-save"], stdout=f, check=True)
 
-        # Save IPv6 (Block rules)
+        # Save IPv6
         with open(RULES_V6_PATH, "w") as f:
             subprocess.run(["ip6tables-save"], stdout=f, check=True)
 
