@@ -3,21 +3,12 @@ services:
     build: .
     container_name: wireguard
     environment:
-      - WG_HOST=${WG_HOST}
-      - PASSWORD_HASH=${WG_PASSWORD_HASH}
-      - WG_PORT=${WG_PORT}
-      - WG_DEFAULT_ADDRESS=${WG_DEFAULT_ADDRESS}
-      - WG_DEFAULT_DNS=${WG_DEFAULT_DNS}
-      - WG_ALLOWED_IPS=${WG_ALLOWED_IPS}
-      - WG_MTU=${WG_MTU}
-      - WG_POST_UP=nohup python3 -u /etc/wireguard/scripts/main.py >> /etc/wireguard/wg-firewall.log 2>&1 &
-      - WG_POST_DOWN=iptables -F; iptables -t nat -F; iptables -X; pkill -f "/etc/wireguard/main.py"
-      - WG_LAN_SUBNET=${WG_LAN_SUBNET}
+      - INSECURE=true
     volumes:
       - ./config:/etc/wireguard
     ports:
-      - "${WG_PORT}:${WG_PORT}/udp"
-      - "127.0.0.1:${WG_WEB_UI_PORT}:51821/tcp"
+      - "$51820:$51820/udp"
+      - "127.0.0.1:51821:51821/tcp"
     restart: unless-stopped
     cap_add:
       - NET_ADMIN
