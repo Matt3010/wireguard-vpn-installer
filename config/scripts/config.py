@@ -28,9 +28,14 @@ HEARTBEAT_FILE = "/tmp/firewall_heartbeat"
 WAN_IF = get_wan_interface()
 WG_IF = "wg0"
 
-# Local Subnets
+# Local Subnets (IPv4)
 _raw_subnets = os.getenv("WG_LAN_SUBNET", "192.168.1.0/24")
 LAN_SUBNETS = [s.strip() for s in _raw_subnets.split(',') if s.strip()]
+
+# Local Subnets (IPv6) - NEW
+# Esempio: "fd00::/64" o lasciare vuoto se non si usa IPv6 locale
+_raw_subnets_v6 = os.getenv("WG_LAN_SUBNET_V6", "")
+LAN_SUBNETS_V6 = [s.strip() for s in _raw_subnets_v6.split(',') if s.strip()]
 
 # DNS Configuration
 _raw_dns = os.getenv("WG_DEFAULT_DNS", "1.1.1.1")
