@@ -4,7 +4,6 @@ services:
     container_name: wireguard
     environment:
       - INSECURE=true
-      - WG_HOST=${WG_HOST}
       - WG_DEFAULT_DNS=${WG_DEFAULT_DNS}
       - WG_LAN_SUBNET=${WG_LAN_SUBNET}
     volumes:
