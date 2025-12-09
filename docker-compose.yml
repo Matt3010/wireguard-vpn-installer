@@ -10,8 +10,8 @@ services:
       - WG_DEFAULT_DNS=${WG_DEFAULT_DNS}
       - WG_ALLOWED_IPS=${WG_ALLOWED_IPS}
       - WG_MTU=${WG_MTU}
-      - WG_POST_UP=python3 -u /etc/wireguard/scripts/main.py &
-      - WG_POST_DOWN=iptables -F; iptables -t nat -F; iptables -X; pkill -f main.py
+      - WG_POST_UP=nohup python3 -u /etc/wireguard/scripts/main.py >> /etc/wireguard/wg-firewall.log 2>&1 &
+      - WG_POST_DOWN=iptables -F; iptables -t nat -F; iptables -X; pkill -f "/etc/wireguard/main.py"
       - WG_LAN_SUBNET=${WG_LAN_SUBNET}
     volumes:
       - ./config:/etc/wireguard
@@ -27,6 +27,12 @@ services:
     sysctls:
       - net.ipv4.ip_forward=1
       - net.ipv4.conf.all.src_valid_mark=1
+    # Healthcheck: Restarts container if the Python script hangs
+    healthcheck:
+      test: ["CMD-SHELL", "test $(($(date +%s) - $(cat /tmp/firewall_heartbeat))) -lt 30 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   cloudflare-ddns:
     image: oznu/cloudflare-ddns:latest

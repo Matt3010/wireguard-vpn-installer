@@ -1,17 +1,15 @@
 import re
 import ipaddress
-from config import ROLES_CONFIG, WG_IF, WAN_IF, LAN_SUBNET, DNS_SERVERS
+from config import ROLES_CONFIG, WG_IF, WAN_IF, LAN_SUBNETS, DNS_SERVERS
 from logger import log_msg, log_error
 
 def is_valid_ip(ip):
     """
     Validates if the string is a valid IPv4 address.
-    Handles CIDR notation (e.g. 10.0.0.1/32) by cleaning it before validation.
     """
     if not ip:
         return False
     try:
-        # Remove CIDR part if present
         ip_clean = ip.split('/')[0]
         ipaddress.IPv4Address(ip_clean)
         return True
@@ -21,41 +19,35 @@ def is_valid_ip(ip):
 def is_valid_port_string(ports_str):
     """
     Strict validation: digits separated by comma or colon.
-    No empty segments allowed (e.g. '80,,443' is invalid).
     """
     if not ports_str:
         return False
-    # Regex: Must start with a digit, optionally followed by comma/colon and more digits.
     return bool(re.match(r'^\d+([,:]\d+)*$', ports_str))
 
 def chunk_ports(ports_str, chunk_size=15):
     """
-    Splits a port string (e.g. "80,443,8080...") into smaller chunks.
-    The 'multiport' module in iptables accepts a maximum of ~15 ports per rule.
+    Splits a port string into smaller chunks for iptables multiport.
     """
     if not ports_str:
         return []
 
     ports = ports_str.split(',')
-    # Yield sub-lists of max 'chunk_size' elements
     for i in range(0, len(ports), chunk_size):
         yield ','.join(ports[i:i + chunk_size])
 
 def parse_roles_from_name(client_name):
     """
     Parses tags like [ADMIN] or [LAN:80] from the client name.
-    Includes validation for typos and invalid port formats.
     """
     # Default Policy (Block/Restricted)
     policy = {
         "internet": False,
         "lan": False,
         "ports": None,
-        "icon": "⛔ DEFAULT (No Tag)",
+        "icon": "⛔ DEFAULT",
         "valid_config": True
     }
 
-    # Extract all content inside square brackets: [TAG]
     matches = re.findall(r"\[([a-zA-Z0-9,:.-]+)]", client_name)
 
     if not matches:
@@ -64,7 +56,6 @@ def parse_roles_from_name(client_name):
     found_valid_role = False
 
     for tag in matches:
-        # Split "LAN:80" into "LAN" and "80"
         if ":" in tag:
             role_key, args = tag.split(":", 1)
         else:
@@ -72,43 +63,33 @@ def parse_roles_from_name(client_name):
 
         role_key = role_key.upper()
 
-        # 1. Check if the Tag exists in our Config
         if role_key in ROLES_CONFIG:
             found_valid_role = True
             base_config = ROLES_CONFIG[role_key]
 
-            # Apply base permissions
             policy["internet"] = base_config.get("internet", False)
             policy["lan"] = base_config.get("lan", False)
             policy["icon"] = base_config.get("icon", "❓")
-
-            # This ensures roles like ADMIN get their "ALL" permission
             policy["ports"] = base_config.get("ports", None)
 
-            # 2. Special Handling for LAN Ports (Overrides defaults if args exist)
+            # Special Handling for LAN Ports
             if role_key == "LAN":
                 if args:
                     if is_valid_port_string(args):
                         policy["ports"] = args
                         policy["icon"] = f"🎯 LAN PORTS [{args}]"
                     else:
-                        # VALIDATION ERROR: Invalid port format
                         policy["valid_config"] = False
-                        policy["lan"] = False # Safety fallback: Block LAN
+                        policy["lan"] = False
                         policy["icon"] = f"⚠️ INVALID PORT ({args})"
-                        log_msg(f"[WARNING] Client '{client_name}' has invalid ports: '{args}'. LAN access blocked.")
+                        log_msg(f"[WARNING] Client '{client_name}' invalid ports: '{args}'. LAN blocked.")
                 else:
-                    # No args provided for LAN tag -> Use config default (which is "ALL")
-                    # We strictly set it here just to be safe/explicit for the LAN tag
                     policy["ports"] = "ALL"
                     policy["icon"] = "🏠 LAN FULL"
 
-            # If we found a valid role, assume it overrides others and break
             break
-
         else:
-            # 3. Handle Unknown Tags (Typos?)
-            log_msg(f"[WARNING] Unknown tag '[{role_key}]' detected in client '{client_name}'. Check for typos.")
+            log_msg(f"[WARNING] Unknown tag '[{role_key}]' in client '{client_name}'.")
             policy["icon"] = f"❓ UNKNOWN [{role_key}]"
 
     if not found_valid_role:
@@ -129,12 +110,13 @@ def generate_iptables_content(clients_data):
         "-A FORWARD -m state --state ESTABLISHED,RELATED -j ACCEPT",
         "# WireGuard Ports",
         "-A INPUT -p udp --dport 51820 -j ACCEPT",
-        "-A INPUT -p tcp --dport 51821 -j ACCEPT"
+        "-A INPUT -p tcp --dport 51821 -j ACCEPT",
+        "# Allow ICMP (Ping) for troubleshooting",
+        "-A INPUT -p icmp --icmp-type echo-request -j ACCEPT",
+        "-A FORWARD -p icmp --icmp-type echo-request -j ACCEPT"
     ]
 
-    # [SECURITY FIX] DNS Rules - Strict Mode
-    # Only allow DNS traffic to the specifically configured DNS servers.
-    # This prevents DNS tunneling abuses.
+    # DNS Rules - Strict Mode
     for dns_ip in DNS_SERVERS:
         if is_valid_ip(dns_ip):
             lines.append(f"-A FORWARD -i {WG_IF} -d {dns_ip} -p udp --dport 53 -j ACCEPT")
@@ -146,23 +128,24 @@ def generate_iptables_content(clients_data):
 
         client_ip = client.get('address', '').strip()
 
-        # [SECURITY] Validate IP before injecting into iptables
         if not is_valid_ip(client_ip):
             log_msg(f"[ERROR] Skipped client with invalid IP: {client_ip}")
             continue
 
         raw_name = client.get('name', '')
-        # Sanitize for comments
         safe_name_comment = re.sub(r'[^a-zA-Z0-9 \[\]:.,_-]', '', raw_name)
-
         current_policy = parse_roles_from_name(raw_name)
 
         log_str = f"User: {safe_name_comment:<20} | Role: {current_policy['icon']}"
 
         # INTERNET Rule
         if current_policy['internet']:
-            # Blocks LAN, but DNS (port 53) was accepted above via specific rules
-            lines.append(f"-A FORWARD -i {WG_IF} -o {WAN_IF} -s {client_ip} ! -d {LAN_SUBNET} -j ACCEPT")
+            # Explicitly DROP traffic to LAN Subnets for "Internet Only" users
+            for subnet in LAN_SUBNETS:
+                 lines.append(f"-A FORWARD -i {WG_IF} -o {WAN_IF} -s {client_ip} -d {subnet} -j DROP")
+
+            # Allow remaining traffic (Internet)
+            lines.append(f"-A FORWARD -i {WG_IF} -o {WAN_IF} -s {client_ip} -j ACCEPT")
             log_str += " | NET: ✅"
         else:
             log_str += " | NET: ❌"
@@ -172,17 +155,18 @@ def generate_iptables_content(clients_data):
             ports = current_policy['ports']
 
             if ports == "ALL":
-                lines.append(f"-A FORWARD -i {WG_IF} -s {client_ip} -d {LAN_SUBNET} -j ACCEPT")
+                # Allow access to ALL defined LAN Subnets
+                for subnet in LAN_SUBNETS:
+                    lines.append(f"-A FORWARD -i {WG_IF} -s {client_ip} -d {subnet} -j ACCEPT")
                 log_str += " | LAN: ✅ (ALL)"
 
             elif ports and current_policy['valid_config']:
-                # [FIX] Handle multiport limit (chunking)
                 try:
                     port_chunks = list(chunk_ports(ports, 15))
                     for chunk in port_chunks:
-                        lines.append(f"-A FORWARD -i {WG_IF} -s {client_ip} -d {LAN_SUBNET} -p tcp -m multiport --dports {chunk} -j ACCEPT")
-                        lines.append(f"-A FORWARD -i {WG_IF} -s {client_ip} -d {LAN_SUBNET} -p udp -m multiport --dports {chunk} -j ACCEPT")
-
+                        for subnet in LAN_SUBNETS:
+                            lines.append(f"-A FORWARD -i {WG_IF} -s {client_ip} -d {subnet} -p tcp -m multiport --dports {chunk} -j ACCEPT")
+                            lines.append(f"-A FORWARD -i {WG_IF} -s {client_ip} -d {subnet} -p udp -m multiport --dports {chunk} -j ACCEPT")
                     log_str += f" | LAN: ✅ (Ports: {ports})"
                 except Exception as e:
                     log_error(f"Generating port rules for {safe_name_comment}", e)
@@ -216,7 +200,7 @@ def generate_ip6tables_block_content():
         ":INPUT DROP [0:0]",
         ":FORWARD DROP [0:0]",
         ":OUTPUT ACCEPT [0:0]",
-        "# Allow Loopback (Crucial for system stability)",
+        "# Allow Loopback",
         "-A INPUT -i lo -j ACCEPT",
         "-A OUTPUT -o lo -j ACCEPT",
         "COMMIT"

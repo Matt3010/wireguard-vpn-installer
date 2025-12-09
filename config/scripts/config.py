@@ -1,21 +1,43 @@
 import os
+import subprocess
+
+def get_wan_interface():
+    """
+    Automatically detects the default network interface (gateway).
+    Falls back to 'eth0' if detection fails.
+    """
+    try:
+        # Route to a public IP to find the main interface
+        route = subprocess.check_output(["ip", "route", "get", "8.8.8.8"]).decode().strip()
+        # Typical output: "8.8.8.8 via 172.x.x.x dev eth0 src ..."
+        parts = route.split()
+        if "dev" in parts:
+            idx = parts.index("dev") + 1
+            if idx < len(parts):
+                return parts[idx]
+    except Exception:
+        pass
+    return "eth0"
 
 # Paths
 LOGFILE = "/etc/wireguard/wg-firewall.log"
 JSON_PATH = "/etc/wireguard/wg0.json"
 RULES_V4_PATH = "/etc/wireguard/iptables.rules.v4"
 RULES_V6_PATH = "/etc/wireguard/iptables.rules.v6"
+HEARTBEAT_FILE = "/tmp/firewall_heartbeat"
 
 # Network Interfaces
-WAN_IF = "eth0"
+WAN_IF = get_wan_interface()  # Dynamically detected
 WG_IF = "wg0"
 
-LAN_SUBNET = os.getenv("WG_LAN_SUBNET", "192.168.1.0/24")
+# Local Subnets
+# Supports multiple subnets separated by comma (e.g. "192.168.1.0/24,10.0.0.0/8")
+_raw_subnets = os.getenv("WG_LAN_SUBNET", "192.168.1.0/24")
+LAN_SUBNETS = [s.strip() for s in _raw_subnets.split(',') if s.strip()]
 
 # DNS Configuration
 # We allow DNS queries ONLY to the servers defined in WG_DEFAULT_DNS.
 # This prevents DNS tunneling to arbitrary servers.
-# If multiple DNS are specified (comma separated), we parse them into a list.
 _raw_dns = os.getenv("WG_DEFAULT_DNS", "1.1.1.1")
 DNS_SERVERS = [ip.strip() for ip in _raw_dns.split(',')]
 

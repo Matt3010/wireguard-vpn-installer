@@ -34,3 +34,4 @@ def log_error(context, exception_obj):
     tb_str = traceback.format_exc()
     # Log traceback directly to the file via handler logic
     logging.error(f"--- TRACEBACK START ---\n{tb_str}--- TRACEBACK END ---")
+}
