@@ -1,6 +1,7 @@
 import os
 import hashlib
 import subprocess
+import re
 from config import RULES_V4_PATH, RULES_V6_PATH
 from logger import log_msg, log_error
 
@@ -14,6 +15,68 @@ def get_file_hash(filepath):
     except Exception as e:
         log_error("Hashing file", e)
         return None
+
+def parse_wg_conf(filepath):
+    """
+    Parses wg0.conf to extract client details.
+    Returns a dict compatible with the previous JSON structure:
+    {
+        'client_id': {'name': 'Name [TAG]', 'address': '10.8.0.x', 'enabled': True}
+    }
+    """
+    clients = {}
+    if not os.path.exists(filepath):
+        return {}
+
+    current_client = {}
+
+    try:
+        with open(filepath, 'r') as f:
+            for line in f:
+                line = line.strip()
+
+                # 1. Detect Client Header Comment
+                # Format expected: # Client: m.scanferla [ADMIN] (1)
+                if line.startswith("# Client:"):
+                    # Regex captures: Group 1 (Name + Tags), Group 2 (ID)
+                    match = re.search(r"# Client:\s*(.+)\s+\((.+)\)", line)
+                    if match:
+                        name = match.group(1).strip()
+                        client_id = match.group(2).strip()
+                        current_client = {'name': name, 'id': client_id, 'enabled': True}
+
+                # 2. Detect AllowedIPs
+                # Format expected: AllowedIPs = 10.8.0.2/32, fdcc:...
+                elif line.startswith("AllowedIPs") and current_client:
+                    try:
+                        # Split by '=' then by ',' to handle multiple IPs (IPv4/IPv6)
+                        parts = line.split("=", 1)[1].strip().split(",")
+                        found_ipv4 = False
+
+                        for part in parts:
+                            ip_cidr = part.strip()
+                            # Simply check for dot (.) for IPv4
+                            if "." in ip_cidr:
+                                ip = ip_cidr.split("/")[0] # Remove /32
+                                current_client['address'] = ip
+                                found_ipv4 = True
+                                break
+
+                        if found_ipv4:
+                            # Save the client using its ID as the key
+                            c_id = current_client['id']
+                            clients[c_id] = current_client.copy()
+
+                        # Reset for next peer
+                        current_client = {}
+
+                    except Exception:
+                        pass
+
+    except Exception as e:
+        log_error("Parsing wg0.conf", e)
+
+    return clients
 
 def save_iptables_rules():
     """Saves current rules to disk (IPv4 and IPv6)."""
@@ -35,19 +98,14 @@ def save_iptables_rules():
 def flush_specific_ip(ip_address):
     """
     Removes conntrack entries ONLY for a specific IP.
-    Uses -D (delete) instead of -F (flush all).
     """
     if not ip_address:
         return
 
     log_msg(f"[CONNTRACK] Flushing connections for IP: {ip_address}")
 
-    # We suppress errors because if no connection exists for this IP, 
-    # conntrack returns an error code, which is fine.
     try:
-        # Delete connections where IP is source
         subprocess.run(['conntrack', '-D', '-s', ip_address], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        # Delete connections where IP is destination
         subprocess.run(['conntrack', '-D', '-d', ip_address], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except Exception:
         pass

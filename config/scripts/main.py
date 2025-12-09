@@ -2,13 +2,11 @@
 
 import os
 import time
-import json
 import signal
-import sys
 import subprocess
-from config import JSON_PATH, RULES_V4_PATH, RULES_V6_PATH, HEARTBEAT_FILE, LAN_SUBNETS
+from config import WG_CONF_PATH, RULES_V4_PATH, HEARTBEAT_FILE, LAN_SUBNETS
 from logger import log_msg, log_error, log_separator
-from utils import get_file_hash, save_iptables_rules, flush_specific_ip
+from utils import get_file_hash, save_iptables_rules, flush_specific_ip, parse_wg_conf
 from rules import generate_iptables_content, generate_ip6tables_block_content
 
 # Global variable to handle clean shutdown
@@ -45,8 +43,7 @@ def apply_firewall_rules(old_clients_data, new_clients_data):
         if process.returncode != 0:
             err_decoded = stderr.decode('utf-8')
             log_msg(f"[ERROR] iptables-restore (v4) failed: {err_decoded}")
-            # On failure, return old data and False
-            return False, old_clients_data 
+            return False, old_clients_data
     except Exception as e:
         log_error("Applying IPv4 rules", e)
         return False, old_clients_data
@@ -58,7 +55,7 @@ def apply_firewall_rules(old_clients_data, new_clients_data):
     except Exception as e:
         log_error("Applying IPv6 rules", e)
 
-    # 3. Calculate Differences and Selective Flush (Only if rules applied successfully)
+    # 3. Calculate Differences and Selective Flush
     try:
         ips_to_flush = set()
         all_ids = set(old_clients_data.keys()).union(set(new_clients_data.keys()))
@@ -67,22 +64,24 @@ def apply_firewall_rules(old_clients_data, new_clients_data):
             old_c = old_clients_data.get(client_id)
             new_c = new_clients_data.get(client_id)
 
-            # Case 1: Client Removed
+            # Case 1: Client Removed (exists in old, not in new)
+            # In wg0.conf, disabled clients are removed from the file, so this catches them.
             if (old_c and not new_c):
                 if old_c.get('address'): ips_to_flush.add(old_c['address'])
-            
+
             # Case 2: Client Added
             elif (new_c and not old_c):
-                if new_c.get('address'): ips_to_flush.add(new_c['address'])
-            
+                # New client, usually no connections to flush, but safe to check
+                pass
+
             # Case 3: Client Modified
             elif old_c and new_c:
                 # If IP changed
                 if old_c.get('address') != new_c.get('address'):
                     ips_to_flush.add(old_c.get('address'))
                     ips_to_flush.add(new_c.get('address'))
-                # If Enabled status or Name/Tags changed
-                elif (old_c.get('enabled') != new_c.get('enabled')) or (old_c.get('name') != new_c.get('name')):
+                # If Name/Tags changed (Rules changed, so flush to force re-eval)
+                elif old_c.get('name') != new_c.get('name'):
                     if new_c.get('address'): ips_to_flush.add(new_c['address'])
 
         if ips_to_flush:
@@ -91,37 +90,30 @@ def apply_firewall_rules(old_clients_data, new_clients_data):
                 flush_specific_ip(ip)
         else:
             log_msg("[INFO] Rules updated, no active connections require flushing.")
-        
+
         save_iptables_rules()
         log_msg("[END] Rules applied successfully.")
-        success = True
         return True, new_clients_data
 
     except Exception as e:
         log_error("Post-processing rules", e)
-        # If flush fails, we consider it a failure to be safe
         return False, old_clients_data
 
-def read_json_safe():
-    """Reads the JSON file with retry logic to avoid race conditions."""
+def read_conf_safe():
+    """Reads the wg0.conf file with retry logic."""
     max_retries = 3
     for i in range(max_retries):
         try:
-            with open(JSON_PATH, 'r') as f:
-                data = json.load(f)
-                return data.get('clients', {})
-        except json.JSONDecodeError:
+            return parse_wg_conf(WG_CONF_PATH)
+        except Exception:
             if i < max_retries - 1:
                 time.sleep(0.2)
                 continue
             else:
-                raise
-        except FileNotFoundError:
-            return {}
+                return {}
     return {}
 
 def main():
-    # Register signal handlers for clean exit
     signal.signal(signal.SIGTERM, handle_signal)
     signal.signal(signal.SIGINT, handle_signal)
 
@@ -136,48 +128,40 @@ def main():
 
     # Initialize client state
     last_clients_state = {}
-    
-    # Pre-load initial state
-    try:
-        if os.path.exists(JSON_PATH):
-            last_clients_state = read_json_safe()
-    except Exception:
-        pass
+
+    # Pre-load initial state from config if exists
+    if os.path.exists(WG_CONF_PATH):
+        last_clients_state = read_conf_safe()
 
     last_hash = ""
-    log_msg(f"[WATCHER] Service started. Monitoring {JSON_PATH}...")
-
+    log_msg(f"[WATCHER] Service started. Monitoring {WG_CONF_PATH}...")
     log_msg(f"[INFO] Protected LAN Subnets: {LAN_SUBNETS}")
 
     while RUNNING:
-        # Update heartbeat for Docker Healthcheck
         update_heartbeat()
 
         try:
-            current_hash = get_file_hash(JSON_PATH)
+            # Monitor wg0.conf instead of json
+            current_hash = get_file_hash(WG_CONF_PATH)
 
-            # Check if hash changed OR if the last update failed (empty last_hash but file exists)
             if current_hash and (current_hash != last_hash):
-                
-                # Debounce: wait to ensure file writing is complete
-                time.sleep(0.5) 
-                
-                # Re-calculate hash after sleep for safety
-                current_hash_after_sleep = get_file_hash(JSON_PATH)
+
+                # Debounce
+                time.sleep(0.5)
+                current_hash_after_sleep = get_file_hash(WG_CONF_PATH)
                 if current_hash != current_hash_after_sleep:
-                    continue # File is still changing, skip to next cycle
+                    continue
 
                 if last_hash != "":
-                    log_msg("[WATCHER] Change detected in wg0.json.")
+                    log_msg("[WATCHER] Change detected in wg0.conf.")
 
                 try:
-                    new_clients_data = read_json_safe()
-                    
-                    # EXECUTE UPDATE
+                    # Read from CONF using the new parser
+                    new_clients_data = read_conf_safe()
+
                     success, resulting_state = apply_firewall_rules(last_clients_state, new_clients_data)
 
                     if success:
-                        # UPDATE STATE ONLY ON SUCCESS
                         last_clients_state = resulting_state
                         last_hash = current_hash 
                     else:
