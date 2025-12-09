@@ -1,5 +1,5 @@
 # Usa l'immagine base di wg-easy v15
-FROM ghcr.io/wg-easy/wg-easy:latest
+FROM ghcr.io/wg-easy/wg-easy:15
 
 # 1. Installa Python3 e iptables (necessari per il tuo script)
 RUN apk add --no-cache python3 py3-pip iptables ip6tables conntrack-tools
