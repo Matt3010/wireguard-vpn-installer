@@ -1,5 +1,5 @@
 services:
-  wg-easy:
+  wg-acl:
     image: matt3010/wg-acl:latest
     container_name: wg-acl
     environment:
