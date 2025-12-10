@@ -1,3 +1,5 @@
+[![Deploy with Docker via Makefile](https://github.com/Matt3010/wireguard-vpn-installer/actions/workflows/main.yml/badge.svg)](https://github.com/Matt3010/wireguard-vpn-installer/actions/workflows/main.yml)
+
 # WireGuard VPN Installer with Role-Based Access Control
 
 This project provides a **WireGuard VPN server** (using [wg-easy](https://github.com/WeeJeWel/wg-easy)) running in **Docker**, combined with a **dynamic firewall script**. It enables easy management of VPN client permissions (Internet, LAN, or specific ports) via tags in the Web UI. The system also integrates **Cloudflare DDNS** to keep your VPN accessible even if your public IP changes.
