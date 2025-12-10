@@ -2,7 +2,7 @@ name: Deploy with Docker via Makefile
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "master" ]
 
 jobs:
   build-and-deploy:
