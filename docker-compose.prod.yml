@@ -1,6 +1,6 @@
 services:
   wg-easy:
-    build: matt3010/wg-acl:latest
+    image: matt3010/wg-acl:latest
     container_name: wg-acl
     environment:
       - INSECURE=true
