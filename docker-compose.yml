@@ -1,7 +1,7 @@
 services:
   wg-easy:
     build: .
-    container_name: wg-acl
+    container_name: wg-acl:latest
     environment:
       - INSECURE=true
       - WG_DEFAULT_DNS=${WG_DEFAULT_DNS}
