@@ -1,4 +1,4 @@
-VERSION ?= 0.0.1
+VERSION ?= 0.0.3
 
 deploy:
 	docker buildx build --platform linux/amd64,linux/arm64 \

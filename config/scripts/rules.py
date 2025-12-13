@@ -1,6 +1,6 @@
 import re
 import ipaddress
-from config import ROLES_CONFIG, WG_IF, WAN_IF, LAN_SUBNETS, LAN_SUBNETS_V6, DNS_SERVERS
+from config import ROLES_CONFIG, WG_IF, WAN_IF, LAN_SUBNETS, DNS_SERVERS
 from logger import log_msg, log_error
 
 def is_valid_ip(ip):
@@ -14,16 +14,6 @@ def is_valid_ip(ip):
     except ValueError:
         return False
 
-def is_valid_ipv6(ip):
-    """Validates if the string is a valid IPv6 address."""
-    if not ip:
-        return False
-    try:
-        ip_clean = ip.split('/')[0]
-        ipaddress.IPv6Address(ip_clean)
-        return True
-    except ValueError:
-        return False
 
 def is_valid_port_string(ports_str):
     """Strict validation: digits separated by comma or colon."""
@@ -172,81 +162,6 @@ def generate_iptables_content(clients_data):
     lines.append("COMMIT")
 
     # NAT TABLE
-    lines.extend([
-        "*nat",
-        ":PREROUTING ACCEPT [0:0]",
-        ":INPUT ACCEPT [0:0]",
-        ":OUTPUT ACCEPT [0:0]",
-        ":POSTROUTING ACCEPT [0:0]",
-        f"-A POSTROUTING -o {WAN_IF} -j MASQUERADE",
-        "COMMIT"
-    ])
-
-    return "\n".join(lines) + "\n"
-
-def generate_ip6tables_content(clients_data):
-    """Generates the text content for ip6tables-restore (IPv6)."""
-    lines = [
-        "*filter",
-        ":INPUT DROP [0:0]",
-        ":FORWARD DROP [0:0]",
-        ":OUTPUT ACCEPT [0:0]",
-        "# Local traffic and established connections",
-        "-A INPUT -i lo -j ACCEPT",
-        "-A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT",
-        "-A FORWARD -m state --state ESTABLISHED,RELATED -j ACCEPT",
-        "# WireGuard Ports",
-        "-A INPUT -p udp --dport 51820 -j ACCEPT",
-        "-A INPUT -p tcp --dport 51821 -j ACCEPT",
-        "# Allow ICMPv6 (Echo/Neighbor Discovery)",
-        "-A INPUT -p icmpv6 -j ACCEPT",
-        "-A FORWARD -p icmpv6 -j ACCEPT"
-    ]
-
-    # DNS Rules (IPv6)
-    for dns_ip in DNS_SERVERS:
-        if is_valid_ipv6(dns_ip):
-            lines.append(f"-A FORWARD -i {WG_IF} -d {dns_ip} -p udp --dport 53 -j ACCEPT")
-            lines.append(f"-A FORWARD -i {WG_IF} -d {dns_ip} -p tcp --dport 53 -j ACCEPT")
-
-    for client_id, client in clients_data.items():
-        if not client.get('enabled', False): continue
-        client_ip = client.get('address_v6', '').strip()
-
-        # Skip if no IPv6 address found for this client
-        if not is_valid_ipv6(client_ip): continue
-
-        raw_name = client.get('name', '')
-        current_policy = parse_roles_from_name(raw_name)
-
-        # (Logging omitted here to avoid duplicate logs with IPv4, or can be enabled if desired)
-
-        # INTERNET Rule
-        if current_policy['internet']:
-            if not current_policy['lan']:
-                for subnet in LAN_SUBNETS_V6:
-                     lines.append(f"-A FORWARD -i {WG_IF} -o {WAN_IF} -s {client_ip} -d {subnet} -j DROP")
-            lines.append(f"-A FORWARD -i {WG_IF} -o {WAN_IF} -s {client_ip} -j ACCEPT")
-
-        # LAN Rule
-        if current_policy['lan'] and LAN_SUBNETS_V6:
-            ports = current_policy['ports']
-            if ports == "ALL":
-                for subnet in LAN_SUBNETS_V6:
-                    lines.append(f"-A FORWARD -i {WG_IF} -s {client_ip} -d {subnet} -j ACCEPT")
-            elif ports and current_policy['valid_config']:
-                try:
-                    port_chunks = list(chunk_ports(ports, 15))
-                    for chunk in port_chunks:
-                        for subnet in LAN_SUBNETS_V6:
-                            lines.append(f"-A FORWARD -i {WG_IF} -s {client_ip} -d {subnet} -p tcp -m multiport --dports {chunk} -j ACCEPT")
-                            lines.append(f"-A FORWARD -i {WG_IF} -s {client_ip} -d {subnet} -p udp -m multiport --dports {chunk} -j ACCEPT")
-                except Exception:
-                    pass
-
-    lines.append("COMMIT")
-
-    # NAT TABLE (IPv6 Masquerade)
     lines.extend([
         "*nat",
         ":PREROUTING ACCEPT [0:0]",

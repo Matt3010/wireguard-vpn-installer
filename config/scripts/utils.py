@@ -2,7 +2,7 @@ import os
 import hashlib
 import subprocess
 import re
-from config import RULES_V4_PATH, RULES_V6_PATH
+from config import RULES_V4_PATH
 from logger import log_msg, log_error
 
 def get_file_hash(filepath):
@@ -23,8 +23,7 @@ def parse_wg_conf(filepath):
     {
         'client_id': {
             'name': 'Name [TAG]',
-            'address': '10.8.0.x',      # IPv4
-            'address_v6': 'fd00::x',    # IPv6 (Optional)
+            'address': '10.8.0.x',      # IPv4 ONLY
             'enabled': True
         }
     }
@@ -41,9 +40,7 @@ def parse_wg_conf(filepath):
                 line = line.strip()
 
                 # 1. Detect Client Header Comment
-                # Format expected: # Client: m.scanferla [ADMIN] (1)
                 if line.startswith("# Client:"):
-                    # Regex captures: Group 1 (Name + Tags), Group 2 (ID)
                     match = re.search(r"# Client:\s*(.+)\s+\((.+)\)", line)
                     if match:
                         name = match.group(1).strip()
@@ -51,34 +48,26 @@ def parse_wg_conf(filepath):
                         current_client = {'name': name, 'id': client_id, 'enabled': True}
 
                 # 2. Detect AllowedIPs
-                # Format expected: AllowedIPs = 10.8.0.2/32, fdcc:...
                 elif line.startswith("AllowedIPs") and current_client:
                     try:
-                        # Split by '=' then by ',' to handle multiple IPs (IPv4/IPv6)
                         parts = line.split("=", 1)[1].strip().split(",")
                         found_ip = False
 
                         for part in parts:
                             ip_cidr = part.strip()
 
-                            # Detect IPv4
-                            if "." in ip_cidr:
+                            # Detect IPv4 ONLY
+                            if "." in ip_cidr and ":" not in ip_cidr:
                                 ip = ip_cidr.split("/")[0] # Remove /32
                                 current_client['address'] = ip
                                 found_ip = True
 
-                            # Detect IPv6
-                            elif ":" in ip_cidr:
-                                ip = ip_cidr.split("/")[0] # Remove /128
-                                current_client['address_v6'] = ip
-                                found_ip = True
+                            # IPv6 ignored intentionally
 
                         if found_ip:
-                            # Save the client using its ID as the key
                             c_id = current_client['id']
                             clients[c_id] = current_client.copy()
 
-                        # Reset for next peer
                         current_client = {}
 
                     except Exception:
@@ -90,7 +79,7 @@ def parse_wg_conf(filepath):
     return clients
 
 def save_iptables_rules():
-    """Saves current rules to disk (IPv4 and IPv6)."""
+    """Saves current IPv4 rules to disk."""
     try:
         os.makedirs(os.path.dirname(RULES_V4_PATH), exist_ok=True)
 
@@ -98,11 +87,9 @@ def save_iptables_rules():
         with open(RULES_V4_PATH, "w") as f:
             subprocess.run(["iptables-save"], stdout=f, check=True)
 
-        # Save IPv6
-        with open(RULES_V6_PATH, "w") as f:
-            subprocess.run(["ip6tables-save"], stdout=f, check=True)
+        # Rimosso salvataggio IPv6
 
-        log_msg(f"[INFO] IPTables rules saved (v4 to {RULES_V4_PATH}, v6 to {RULES_V6_PATH})")
+        log_msg(f"[INFO] IPTables rules saved to {RULES_V4_PATH}")
     except Exception as e:
         log_error("Saving iptables rules", e)
 

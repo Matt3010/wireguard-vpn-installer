@@ -1,6 +1,6 @@
 FROM ghcr.io/wg-easy/wg-easy:15
 
-RUN apk add --no-cache python3 py3-pip iptables ip6tables conntrack-tools
+RUN apk add --no-cache python3 py3-pip iptables conntrack-tools
 WORKDIR /app
 
 COPY start.sh /app/start.sh

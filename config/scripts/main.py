@@ -4,10 +4,10 @@ import os
 import time
 import signal
 import subprocess
-from config import WG_CONF_PATH, RULES_V4_PATH, RULES_V6_PATH, HEARTBEAT_FILE, LAN_SUBNETS
+from config import WG_CONF_PATH, RULES_V4_PATH, HEARTBEAT_FILE, LAN_SUBNETS
 from logger import log_msg, log_error, log_separator
 from utils import get_file_hash, save_iptables_rules, flush_specific_ip, parse_wg_conf
-from rules import generate_iptables_content, generate_ip6tables_content
+from rules import generate_iptables_content
 
 # Global variable to handle clean shutdown
 RUNNING = True
@@ -28,11 +28,11 @@ def update_heartbeat():
 
 def apply_firewall_rules(old_clients_data, new_clients_data):
     """
-    Applies the firewall rules (IPv4 and IPv6).
+    Applies the firewall rules (IPv4 ONLY).
     Returns a tuple: (success: bool, resulting_data: dict)
     """
     log_separator()
-    log_msg("[START] Processing firewall rules update...")
+    log_msg("[START] Processing firewall rules update (IPv4 Only)...")
 
     # 1. Apply IPv4 Rules (IPTables Restore)
     try:
@@ -48,20 +48,7 @@ def apply_firewall_rules(old_clients_data, new_clients_data):
         log_error("Applying IPv4 rules", e)
         return False, old_clients_data
 
-    # 2. Apply IPv6 Rules (IP6Tables Restore)
-    try:
-        v6_content = generate_ip6tables_content(new_clients_data)
-        process = subprocess.Popen(['ip6tables-restore'], stdin=subprocess.PIPE, stderr=subprocess.PIPE)
-        _, stderr = process.communicate(input=v6_content.encode('utf-8'))
-
-        if process.returncode != 0:
-            err_decoded = stderr.decode('utf-8')
-            log_msg(f"[ERROR] ip6tables-restore (v6) failed: {err_decoded}")
-            # Note: We continue even if v6 fails, but log it.
-    except Exception as e:
-        log_error("Applying IPv6 rules", e)
-
-    # 3. Calculate Differences and Selective Flush
+    # 2. Calculate Differences and Selective Flush
     try:
         ips_to_flush = set()
         all_ids = set(old_clients_data.keys()).union(set(new_clients_data.keys()))
@@ -69,7 +56,7 @@ def apply_firewall_rules(old_clients_data, new_clients_data):
         def add_client_ips(c):
             if not c: return
             if c.get('address'): ips_to_flush.add(c['address'])
-            if c.get('address_v6'): ips_to_flush.add(c['address_v6'])
+            # IPv6 removed
 
         for client_id in all_ids:
             old_c = old_clients_data.get(client_id)
@@ -85,9 +72,8 @@ def apply_firewall_rules(old_clients_data, new_clients_data):
 
             # Case 3: Client Modified
             elif old_c and new_c:
-                # If IPs changed
-                if (old_c.get('address') != new_c.get('address')) or \
-                   (old_c.get('address_v6') != new_c.get('address_v6')):
+                # If IPs changed (IPv4 only check)
+                if (old_c.get('address') != new_c.get('address')):
                     add_client_ips(old_c)
                     add_client_ips(new_c)
                 # If Name/Tags changed (Rules changed, so flush to force re-eval)
@@ -136,13 +122,7 @@ def main():
         except Exception:
             pass
 
-    if os.path.exists(RULES_V6_PATH):
-        try:
-            with open(RULES_V6_PATH, "r") as f:
-                subprocess.run(["ip6tables-restore"], stdin=f, stderr=subprocess.DEVNULL)
-            log_msg("[INFO] IPv6 rules restored at startup")
-        except Exception:
-            pass
+    # Rimosso ripristino RULES_V6_PATH
 
     # Initialize client state
     last_clients_state = {}

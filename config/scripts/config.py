@@ -21,7 +21,6 @@ def get_wan_interface():
 LOGFILE = "/etc/wireguard/wg-firewall.log"
 WG_CONF_PATH = "/etc/wireguard/wg0.conf"
 RULES_V4_PATH = "/etc/wireguard/iptables.rules.v4"
-RULES_V6_PATH = "/etc/wireguard/iptables.rules.v6"
 HEARTBEAT_FILE = "/tmp/firewall_heartbeat"
 
 # Network Interfaces
@@ -32,9 +31,6 @@ WG_IF = "wg0"
 _raw_subnets = os.getenv("WG_LAN_SUBNET", "192.168.1.0/24")
 LAN_SUBNETS = [s.strip() for s in _raw_subnets.split(',') if s.strip()]
 
-# Local Subnets (IPv6)
-_raw_subnets_v6 = os.getenv("WG_LAN_SUBNET_V6", "")
-LAN_SUBNETS_V6 = [s.strip() for s in _raw_subnets_v6.split(',') if s.strip()]
 
 # DNS Configuration
 _raw_dns = os.getenv("WG_DEFAULT_DNS", "1.1.1.1")
