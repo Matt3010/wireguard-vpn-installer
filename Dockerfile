@@ -1,6 +1,7 @@
 FROM ghcr.io/wg-easy/wg-easy:15
 
-RUN apk add --no-cache python3 py3-pip iptables conntrack-tools
+RUN apk add --no-cache python3 py3-pip iptables conntrack-tools iproute2
+
 WORKDIR /app
 
 COPY config/scripts/*.py /app/
