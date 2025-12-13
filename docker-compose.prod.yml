@@ -6,6 +6,7 @@ services:
       - INSECURE=true
       - WG_DEFAULT_DNS=${WG_DEFAULT_DNS}
       - WG_LAN_SUBNET=${WG_LAN_SUBNET}
+      - DISABLE_IPV6=true
     volumes:
       - ./config:/etc/wireguard
     ports:
