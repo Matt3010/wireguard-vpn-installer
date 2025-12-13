@@ -22,7 +22,7 @@ def update_heartbeat():
     """Updates a timestamp file so Docker knows the script is alive."""
     try:
         with open(HEARTBEAT_FILE, "w") as f:
-            f.write(str(time.time()))
+            f.write(str(int(time.time())))
     except Exception:
         pass
 
