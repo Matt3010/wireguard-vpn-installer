@@ -58,5 +58,11 @@ ROLES_CONFIG = {
         "lan": True,
         "ports": "ALL",
         "icon": "🏠 LAN FULL"
+    },
+    "HYBRID": {
+        "internet": True,
+        "lan": False,
+        "ports": None,
+        "icon": "⚡ HYBRID"
     }
 }

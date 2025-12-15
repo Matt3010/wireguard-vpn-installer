@@ -31,7 +31,7 @@ def chunk_ports(ports_str, chunk_size=15):
         yield ','.join(ports[i:i + chunk_size])
 
 def parse_roles_from_name(client_name):
-    """Parses tags like [ADMIN] or [LAN:80] from the client name."""
+    """Parses tags like [ADMIN], [LAN:80] or [HYBRID:80] from the client name."""
     policy = {
         "internet": False,
         "lan": False,
@@ -64,20 +64,29 @@ def parse_roles_from_name(client_name):
             policy["icon"] = base_config.get("icon", "❓")
             policy["ports"] = base_config.get("ports", None)
 
-            # Special Handling for LAN Ports
-            if role_key == "LAN":
+            if role_key in ["LAN", "HYBRID"]:
                 if args:
                     if is_valid_port_string(args):
+                        policy["lan"] = True
                         policy["ports"] = args
-                        policy["icon"] = f"🎯 LAN PORTS [{args}]"
+
+                        if role_key == "HYBRID":
+                            policy["icon"] = f"⚡ HYBRID [{args}]"
+                        else:
+                            policy["icon"] = f"🎯 LAN PORTS [{args}]"
                     else:
                         policy["valid_config"] = False
                         policy["lan"] = False
                         policy["icon"] = f"⚠️ INVALID PORT ({args})"
                         log_msg(f"[WARNING] Client '{client_name}' invalid ports: '{args}'. LAN blocked.")
+
                 else:
-                    policy["ports"] = "ALL"
-                    policy["icon"] = "🏠 LAN FULL"
+                    if role_key == "LAN":
+                        policy["ports"] = "ALL"
+                        policy["icon"] = "🏠 LAN FULL"
+                    elif role_key == "HYBRID":
+                        policy["icon"] = "⚡ HYBRID (NET ONLY)"
+
             break
         else:
             log_msg(f"[WARNING] Unknown tag '[{role_key}]' in client '{client_name}'.")
