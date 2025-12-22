@@ -1,162 +1,23 @@
-[![Deploy with Docker via Makefile](https://github.com/Matt3010/wireguard-vpn-installer/actions/workflows/main.yml/badge.svg)](https://github.com/Matt3010/wireguard-vpn-installer/actions/workflows/main.yml)
+This project is a custom extension of WG-Easy (a web-based manager for WireGuard). It wraps the original application to add a dynamic, role-based Firewall and ACL system powered by Python and iptables.
 
-# WireGuard VPN Installer with Role-Based Access Control
+Instead of giving every VPN client full access to the network, this system allows the administrator to define access levels directly within the client's name using Tags.
 
-This project provides a **WireGuard VPN server** (using [wg-easy](https://github.com/WeeJeWel/wg-easy)) running in **Docker**, combined with a **dynamic firewall script**. It enables easy management of VPN client permissions (Internet, LAN, or specific ports) via tags in the Web UI. The system also integrates **Cloudflare DDNS** to keep your VPN accessible even if your public IP changes.
+Key Features
 
----
+Tag-Based Permissions: The system parses the WireGuard configuration (wg0.conf) looking for specific tags in the client's name (e.g., MyPhone [ADMIN]).
 
-## Prerequisites
+Dynamic Firewall: A Python background service monitors configuration changes in real-time. When a client is added or modified, it automatically generates and applies the corresponding iptables rules.
 
-- **Hardware:** Linux server (e.g., Raspberry Pi) capable of running Docker
-- **Domain:** Managed by Cloudflare
+Security & cleanup: It includes a mechanism to flush connections (conntrack) for specific IPs when their permissions change, ensuring revoked access is cut off immediately.
 
----
+Containerized: It is built as a Docker container that initiates the firewall manager before starting the standard WG-Easy Node.js server.
 
-## Installation
+Available Roles (defined in config.py):
 
-Clone the repository:
+[ADMIN]: Full access to Internet and all LAN ports.
 
-```bash
-git clone https://github.com/Matt3010/wireguard-vpn-installer.git
-```
+[ONLYINTERNET]: Access to the Internet only; LAN traffic is blocked.
 
-Navigate to the folder containing `docker-compose.yml` and create a `.env` file. Example:
+[LAN]: Full access to LAN resources; Internet access is blocked.
 
-```env
-# --- WG-EASY CONFIGURATION ---
-WG_HOST=vpn.yourdomain.com
-WG_PASSWORD_HASH=''  # Replace with generated bcrypt hash
-WG_PORT=51820
-WG_WEB_UI_PORT=51821
-WG_DEFAULT_ADDRESS=10.8.0.x
-WG_DEFAULT_DNS=1.1.1.1
-WG_ALLOWED_IPS=0.0.0.0/0
-WG_MTU=1420
-
-# --- CLOUDFLARE DDNS ---
-CF_API_KEY=your_cloudflare_api_token
-CF_ZONE=yourdomain.com
-CF_SUBDOMAIN=vpn
-CF_PROXIED=false
-```
-
-### Generating the Password Hash
-Generate a bcrypt hash for the Web UI password:
-
-See: [How to generate a bcrypt hash - wg-easy](https://github.com/wg-easy/wg-easy/blob/v14/How_to_generate_an_bcrypt_hash.md)
-
-Copy the output and paste it into the `.env` file.
-
----
-
-## Step 1: Cloudflare API Token Setup
-
-1. Log in to your Cloudflare Dashboard.
-2. Go to **My Profile → API Tokens → Create Token**.
-3. Use the **Edit Zone DNS** template or create a custom token.
-4. Set permissions:
-   - Zone Resources → Include → Specific zone → Your Domain
-5. Copy the generated API Token for use in the `.env` file.
-
----
-
-## Cloudflare DNS Setup
-
-Before starting, ensure your domain is added to Cloudflare and you have access to its dashboard.
-
-1. **DNS Record:**
-   - Create an `A` record for your VPN subdomain (e.g., `vpn.yourdomain.com`) pointing to your ISP public IP (static or dynamic).
-   - The system can update this record automatically via DDNS.
-2. **CF_PROXIED Flag:**
-   - Set to `false` to expose the real IP (required for VPN traffic).
-   - Set to `true` only if you want Cloudflare proxy (not recommended for VPN UDP traffic).
-
----
-
-## WireGuard Port Forwarding
-
-- **Protocol:** UDP
-- **Remote Host IP:** 0.0.0.0
-- **LAN Host:** Your local IP address
-- **WAN Port:** 51820
-- **LAN Host Port:** 51820
-
----
-
-## Docker & Network Configuration
-
-- The WireGuard container should have access to the host network for proper VPN operation. Use `network_mode: host` in `docker-compose.yml` if required.
-- Ensure Docker has permissions to run scripts and access network interfaces.
-
----
-
-### Tagging System
-
-Rename clients in the Web UI to apply firewall rules. The system uses tags enclosed in **square brackets**.
-
-> **Important:** For port ranges, you MUST use a colon (`:`) instead of a hyphen (`-`), as this is strictly passed to `iptables`.
-
-| Tag Format           | Role           | Internet | LAN Access | Description |
-|----------------------|----------------|:--------:|:----------:|-------------|
-| `[ADMIN]`            | Admin          | ✅       | ✅         | Full access to Internet and all LAN devices. |
-| `[ONLYINTERNET]`     | Internet Only  | ✅       | ❌         | Guests. VPN Internet access, but blocked from local LAN. |
-| `[LAN]`              | LAN Full       | ❌       | ✅         | Access to ALL local devices. No Internet. |
-| `[LAN:80]`           | LAN Port       | ❌       | ✅         | Access only to port 80 (TCP/UDP). |
-| `[LAN:80:90]`        | LAN Range      | ❌       | ✅         | Access to ports 80 through 90 (**Use colon `:`**). |
-| `[LAN:80,443]`       | LAN Multi      | ❌       | ✅         | Access to ports 80 AND 443 (Comma separated). |
-| `[LAN:80:90,8080]`   | LAN Mixed      | ❌       | ✅         | Range 80-90 AND single port 8080. |
-| (No Tag)             | Default        | ❌       | ❌         | **Blocked by default** (No access). |
-
-**Examples:**
-- `iPhone_Mario [ADMIN]` → Full access
-- `GuestUser [ONLYINTERNET]` → Internet only, safe for public WiFi
-- `Printer [LAN]` → Access to all internal devices, no internet
-- `WebDev [LAN:80,443]` → Access only to web ports
-- `TestServer [LAN:8000:9000]` → **Correct** (Uses colon)
-- `WrongServer [LAN:8000-9000]` → ❌ **Wrong** (Do not use hyphens for ranges)
-
----
-
-## Firewall Script Notes
-
-- It may require root privileges to manage firewall rules.
-- Log files are stored in `/var/log/wg-firewall.log` inside the container.
-- **LAN_SUBNET:** The default is `192.168.1.0/24`, but you should change this value in `wg-dynamic-firewall.py` to match your actual LAN subnet (e.g., `10.0.0.0/24`, `192.168.10.0/24`, etc.).
-- docker compose up -d --build --force-recreate to start docker compose.
----
-
-## Features
-
-- **Web UI:** Manage VPN clients easily with wg-easy dashboard.
-- **Dynamic DNS:** Automatically updates Cloudflare DNS records.
-- **Role-Based Firewall:** Client permissions are set by tags in their names.
-
----
-
-## Monitoring & Logs
-
-Check firewall logs:
-
-```bash
-docker exec -it wireguard cat /var/log/wg-firewall.log
-```
-
-To access wireguard configuration page you should jump host.
-
-```ssh
-ssh -L 51821:127.0.0.1:51821 user@your-server-ip
-```
-
----
-
-## Troubleshooting
-
-- **Cloudflare API Errors:** Check token permissions and zone settings.
-- **DNS Record Not Updating:** Verify subdomain exists and API token is correct.
-- **VPN Connection Issues:** Ensure port 51820 UDP is open and forwarded correctly.
-- **Firewall Script Errors:** Check script permissions and logs for details.
-- **Docker Network Issues:** Use `network_mode: host` if clients cannot connect.
-- **SSL/TLS:** Not required for VPN, but recommended for dashboard if exposed to the Internet.
-
----
+[HYBRID]: Internet access + access to specific LAN ports (e.g., [HYBRID:80,443]).
